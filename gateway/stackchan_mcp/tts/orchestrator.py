@@ -55,9 +55,9 @@ logger = logging.getLogger(__name__)
 
 
 #: Built-in default engine name when ``voice`` is omitted from the tool
-#: call and ``STACKCHAN_TTS_ENGINE`` is unset. VOICEVOX is the canonical
-#: default (Issue #70).
-DEFAULT_VOICE = "voicevox"
+#: call and ``STACKCHAN_TTS_ENGINE`` is unset. TTSCore talks to the local
+#: TTS Core service over /tmp/tts_core.sock.
+DEFAULT_VOICE = "ttscore"
 
 #: Environment variable that overrides the default engine selected when a
 #: ``say`` call omits ``voice``. The per-call ``voice`` argument still
@@ -102,10 +102,10 @@ def _set_avatar_payload_error(payload: dict[str, Any]) -> str:
 def _resolve_default_engine() -> str:
     """Return the default engine name, honouring ``STACKCHAN_TTS_ENGINE``.
 
-    The environment variable lets an operator make a non-VOICEVOX engine
-    (e.g. ``irodori``) the default for ``say`` calls that don't pass an
-    explicit ``voice``. A blank or whitespace-only value is ignored so an
-    empty export does not silently break engine lookup.
+    The environment variable lets an operator make a different engine the
+    default for ``say`` calls that don't pass an explicit ``voice``. A blank
+    or whitespace-only value is ignored so an empty export does not silently
+    break engine lookup.
     """
     env_engine = os.getenv(TTS_ENGINE_ENV_VAR)
     if env_engine and env_engine.strip():
@@ -225,10 +225,8 @@ async def synthesize_and_send(
         raise NotImplementedError(
             f"TTS engine '{voice}' is not registered. "
             f"Available engines: {available or '(none)'}. "
-            "Install the relevant extra (e.g. "
-            "'pip install stackchan-mcp[tts]' for VOICEVOX) and ensure "
-            "the corresponding service (e.g. the VOICEVOX HTTP engine) "
-            "is reachable."
+            "Make sure the TTS Core service is running and its Unix socket "
+            "(/tmp/tts_core.sock) is accessible."
         )
 
     if gateway is None:

@@ -53,9 +53,8 @@ logger = logging.getLogger(__name__)
 
 
 #: Default engine name when ``engine`` is omitted from the tool call.
-#: faster-whisper runs locally and matches the "works offline out of
-#: the box" stance (Issue #91).
-DEFAULT_ENGINE = "faster-whisper"
+#: ASRCore talks to the local ASR Core service over /tmp/asr_core.sock.
+DEFAULT_ENGINE = "asrcore"
 
 #: Minimum capture window. Below this Whisper has too little signal to
 #: produce anything useful, and the listen() round-trip starts to be
@@ -351,10 +350,8 @@ async def listen_and_transcribe(
         raise NotImplementedError(
             f"STT engine '{engine_name}' is not registered. "
             f"Available engines: {available or '(none)'}. "
-            "Install the relevant extra (e.g. "
-            "'pip install stackchan-mcp[stt-faster-whisper]' for the "
-            "default local engine, or 'pip install "
-            "stackchan-mcp[stt-openai]' for the OpenAI Whisper API)."
+            "Make sure the ASR Core service is running and its Unix socket "
+            "(/tmp/asr_core.sock) is accessible."
         )
 
     if gateway is None:

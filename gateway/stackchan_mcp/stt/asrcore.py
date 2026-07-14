@@ -39,28 +39,38 @@ class ASRCoreEngine(STTEngine):
 
     async def _ensure_loaded(self, session: aiohttp.ClientSession) -> None:
         """Ask ASRCore to load its default model if it is not ready yet."""
-        async with session.get(
-            "http://localhost/status",
-            timeout=aiohttp.ClientTimeout(total=10),
-        ) as resp:
-            if resp.status != 200:
-                body = await resp.text()
-                raise RuntimeError(f"ASRCore status returned {resp.status}: {body[:500]}")
-            status = await resp.json()
+        try:
+            async with session.get(
+                "http://localhost/status",
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    raise RuntimeError(f"ASRCore status returned {resp.status}: {body[:500]}")
+                status = await resp.json()
+        except aiohttp.ClientConnectorError as exc:
+            raise RuntimeError(
+                f"Cannot connect to ASRCore at {self._socket_path}: {exc}"
+            ) from exc
 
         state = status.get("state")
         if state == "loaded":
             return
 
         if state == "unloaded":
-            async with session.post(
-                "http://localhost/load",
-                json={"model_name": DEFAULT_MODEL_NAME},
-                timeout=aiohttp.ClientTimeout(total=120),
-            ) as resp:
-                if resp.status != 200:
-                    body = await resp.text()
-                    raise RuntimeError(f"ASRCore load returned {resp.status}: {body[:500]}")
+            try:
+                async with session.post(
+                    "http://localhost/load",
+                    json={"model_name": DEFAULT_MODEL_NAME},
+                    timeout=aiohttp.ClientTimeout(total=120),
+                ) as resp:
+                    if resp.status != 200:
+                        body = await resp.text()
+                        raise RuntimeError(f"ASRCore load returned {resp.status}: {body[:500]}")
+            except aiohttp.ClientConnectorError as exc:
+                raise RuntimeError(
+                    f"Cannot connect to ASRCore at {self._socket_path}: {exc}"
+                ) from exc
 
         for _ in range(60):
             async with session.get("http://localhost/status") as resp:

@@ -67,13 +67,77 @@ Edit `.env`:
 
 ## Run
 
+This custom fork uses the **Streamable HTTP daemon** mode so the gateway is
+started once and reused by the MCP client. The daemon also expects the local
+ASR Core (`/tmp/asr_core.sock`) and TTS Core (`/tmp/tts_core.sock`) services
+to be running for `listen` and `say`.
+
+### Start the local Core services
+
+Make sure the ASR Core and TTS Core services are running and their Unix
+sockets are present:
+
 ```bash
-uv run python -m stackchan_mcp
+ls -la /tmp/asr_core.sock /tmp/tts_core.sock
+```
+
+### Start the MCP daemon
+
+From the `gateway` directory:
+
+```bash
+uv run stackchan-mcp serve --transport streamable-http --no-mdns
+```
+
+Or use the helper script:
+
+```bash
+./scripts/stackchan-mcp-daemon.sh start   # start in background
+./scripts/stackchan-mcp-daemon.sh status  # check health
+./scripts/stackchan-mcp-daemon.sh stop    # stop
 ```
 
 Default ports:
 - WebSocket (ESP32 -> gateway): `0.0.0.0:8765`
 - HTTP capture (ESP32 -> gateway): `0.0.0.0:8766`
+- Streamable HTTP MCP (client -> gateway): `127.0.0.1:8767`
+
+### Systemd user service
+
+Install the unit file and enable it:
+
+```bash
+cp scripts/stackchan-mcp-daemon.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now stackchan-mcp-daemon
+systemctl --user status stackchan-mcp-daemon
+```
+
+### MCP client configuration
+
+Point your MCP client at the daemon instead of spawning a stdio process:
+
+```json
+{
+  "mcpServers": {
+    "stackchanmcp": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:8767/mcp"
+    }
+  }
+}
+```
+
+If you do not need the local Core services and want the original stdio mode,
+you can still run `uv run python -m stackchan_mcp`.
+
+### Note on ESP32 reconnection
+
+The gateway waits for the ESP32 to connect over WebSocket; the reconnection
+initiative is on the device side. After a normal daemon restart the ESP32
+should reconnect automatically within a few seconds. If it does not (for
+example after a force-kill or network hiccup), power-cycle or reset the
+StackChan so its firmware starts a fresh WebSocket handshake.
 
 ## Daemon mode (Phase B)
 
@@ -90,9 +154,6 @@ tool calls through a bounded command queue. See
 [`../docs/178-daemon-setup.md`](../docs/178-daemon-setup.md) for environment
 variables, bearer-token rules, `MCP_HTTP_ALLOWED_HOSTS`, bind safety, and
 migration notes.
-
-The zero-subcommand stdio mode remains supported and unchanged for existing
-client configs.
 
 By default, the gateway advertises the WebSocket endpoint as
 `_stackchan-mcp._tcp.local.` via mDNS/DNS-SD so fresh firmware can discover it

@@ -1,0 +1,21 @@
+[Unit]
+Description=StackChan MCP Streamable HTTP daemon
+Documentation=https://github.com/guisongchen/stackchan-mcp
+After=network.target
+
+[Service]
+Type=simple
+# The daemon must not inherit proxy environment variables that would break
+# aiohttp/httpx calls to local Unix-socket Core services.
+Environment="http_proxy="
+Environment="https_proxy="
+Environment="HTTP_PROXY="
+Environment="HTTPS_PROXY="
+Environment="all_proxy="
+Environment="ALL_PROXY="
+ExecStart=%h/.local/bin/stackchan-mcp serve --transport streamable-http --no-mdns
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -46,28 +46,38 @@ class TTSCoreEngine(TTSEngine):
         already loading we wait briefly for it to finish. Synthesis is
         only attempted once the model reports 'loaded'.
         """
-        async with session.get(
-            "http://localhost/status",
-            timeout=aiohttp.ClientTimeout(total=10),
-        ) as resp:
-            if resp.status != 200:
-                body = await resp.text()
-                raise RuntimeError(f"TTSCore status returned {resp.status}: {body[:500]}")
-            status = await resp.json()
+        try:
+            async with session.get(
+                "http://localhost/status",
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    raise RuntimeError(f"TTSCore status returned {resp.status}: {body[:500]}")
+                status = await resp.json()
+        except aiohttp.ClientConnectorError as exc:
+            raise RuntimeError(
+                f"Cannot connect to TTSCore at {self._socket_path}: {exc}"
+            ) from exc
 
         state = status.get("state")
         if state == "loaded":
             return
 
         if state == "unloaded":
-            async with session.post(
-                "http://localhost/load",
-                json={"model_name": DEFAULT_MODEL_NAME},
-                timeout=aiohttp.ClientTimeout(total=120),
-            ) as resp:
-                if resp.status != 200:
-                    body = await resp.text()
-                    raise RuntimeError(f"TTSCore load returned {resp.status}: {body[:500]}")
+            try:
+                async with session.post(
+                    "http://localhost/load",
+                    json={"model_name": DEFAULT_MODEL_NAME},
+                    timeout=aiohttp.ClientTimeout(total=120),
+                ) as resp:
+                    if resp.status != 200:
+                        body = await resp.text()
+                        raise RuntimeError(f"TTSCore load returned {resp.status}: {body[:500]}")
+            except aiohttp.ClientConnectorError as exc:
+                raise RuntimeError(
+                    f"Cannot connect to TTSCore at {self._socket_path}: {exc}"
+                ) from exc
 
         # Poll until loaded (or error). Back off modestly; model load can
         # take a few seconds on first use.
@@ -85,7 +95,7 @@ class TTSCoreEngine(TTSEngine):
         raise RuntimeError("TTSCore model did not become loaded in time")
 
     async def synthesize(self, text: str, **opts: Any) -> bytes:
-        if not text:
+        if not isinstance(text, str) or not text.strip():
             raise ValueError("ttscore synthesize: empty text")
 
         language = opts.get("language")

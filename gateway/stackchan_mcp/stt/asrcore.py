@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
 import os
 import struct
@@ -16,6 +16,7 @@ from .base import STTEngine
 
 DEVICE_SAMPLE_RATE = 16000
 SOCKET_PATH = "/tmp/asr_core.sock"
+DEFAULT_MODEL_NAME = "qwen3-asr-0.6b"
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,44 @@ class ASRCoreEngine(STTEngine):
     def __init__(self, socket_path: str = SOCKET_PATH) -> None:
         self._socket_path = socket_path
 
+    async def _ensure_loaded(self, session: aiohttp.ClientSession) -> None:
+        """Ask ASRCore to load its default model if it is not ready yet."""
+        async with session.get(
+            "http://localhost/status",
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as resp:
+            if resp.status != 200:
+                body = await resp.text()
+                raise RuntimeError(f"ASRCore status returned {resp.status}: {body[:500]}")
+            status = await resp.json()
+
+        state = status.get("state")
+        if state == "loaded":
+            return
+
+        if state == "unloaded":
+            async with session.post(
+                "http://localhost/load",
+                json={"model_name": DEFAULT_MODEL_NAME},
+                timeout=aiohttp.ClientTimeout(total=120),
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    raise RuntimeError(f"ASRCore load returned {resp.status}: {body[:500]}")
+
+        for _ in range(60):
+            async with session.get("http://localhost/status") as resp:
+                status = await resp.json()
+            state = status.get("state")
+            if state == "loaded":
+                return
+            if state == "error":
+                error_message = status.get("error_message") or "unknown error"
+                raise RuntimeError(f"ASRCore model failed to load: {error_message}")
+            await asyncio.sleep(0.5)
+
+        raise RuntimeError("ASRCore model did not become loaded in time")
+
     async def transcribe(self, pcm: bytes, **opts: Any) -> dict[str, Any]:
         if not pcm:
             raise ValueError("asrcore transcribe: empty PCM buffer")
@@ -47,6 +86,8 @@ class ASRCoreEngine(STTEngine):
 
             connector = aiohttp.UnixConnector(path=self._socket_path)
             async with aiohttp.ClientSession(connector=connector) as session:
+                await self._ensure_loaded(session)
+
                 payload: dict[str, Any] = {"audio_path": tmp_path}
                 url = "http://localhost/transcribe"
                 async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=120)) as resp:

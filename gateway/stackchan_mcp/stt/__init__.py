@@ -49,8 +49,15 @@ def _register_openai_whisper() -> None:
     get_registry().register(OpenAIWhisperEngine())
 
 
+def _register_asrcore() -> None:
+    from .asrcore import ASRCoreEngine
+
+    get_registry().register(ASRCoreEngine())
+
+
 _try_register(_register_faster_whisper, "faster-whisper")
 _try_register(_register_openai_whisper, "openai-whisper")
+_try_register(_register_asrcore, "asrcore")
 
 
 __all__ = [

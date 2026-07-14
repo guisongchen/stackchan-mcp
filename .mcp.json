@@ -1,16 +1,8 @@
 {
   "mcpServers": {
     "stackchanmcp": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "${CLAUDE_PLUGIN_ROOT}/gateway",
-        "python",
-        "-m",
-        "stackchan_mcp",
-        "serve"
-      ]
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:8767/mcp"
     }
   }
 }

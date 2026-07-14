@@ -60,9 +60,16 @@ def _register_edge_tts() -> None:
     get_registry().register(EdgeTTSEngine())
 
 
+def _register_ttscore() -> None:
+    from .ttscore import TTSCoreEngine
+
+    get_registry().register(TTSCoreEngine())
+
+
 _try_register(_register_voicevox, "voicevox")
 _try_register(_register_irodori, "irodori")
 _try_register(_register_edge_tts, "edge-tts")
+_try_register(_register_ttscore, "ttscore")
 
 
 __all__ = [

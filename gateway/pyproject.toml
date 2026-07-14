@@ -51,48 +51,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Phase 4 TTS — see Issue #70.
-# Concrete engines (VOICEVOX, Irodori) consume these libraries:
-#   * httpx     — VOICEVOX / Irodori HTTP engine client
-#   * opuslib   — Opus encoding for the device's audio decoder
-# `tts-voicevox` is a no-op alias provided so users can declare intent
-# explicitly; the VOICEVOX engine itself is an external HTTP process and
-# adds no Python dependencies of its own.
+# Phase 4 TTS/STT — see Issues #70 and #91.
+# The base `[tts]` and `[stt]` extras carry `opuslib` for Opus encoding
+# and decoding on the gateway side. The concrete engines (TTSCore and
+# ASRCore) talk to local Core services over Unix sockets and have no
+# additional Python dependencies of their own.
 tts = [
-    "httpx>=0.27",
     "opuslib>=3",
 ]
-tts-voicevox = [
-    "stackchan-mcp[tts]",
-]
-# Irodori is an external HTTP synthesis service that returns MP3 (see
-# Issue #286). On top of the base `[tts]` extra (httpx + opuslib) it adds
-# `miniaudio` to decode the MP3 response to PCM. miniaudio is a small,
-# self-contained C extension (MIT) with prebuilt wheels for Windows,
-# macOS (x86_64 + arm64), and Linux, so it installs without a system
-# audio library — unlike a ffmpeg/libav binding — which keeps the
-# Windows wheel path (and the CI windows-smoke job) simple.
-tts-irodori = [
-    "stackchan-mcp[tts]",
-    "miniaudio>=1.59",
-]
-
-# Phase 4 STT — see Issue #91.
-# The base `stt` extra carries `opuslib` for decoding the device's
-# inbound Opus frames. Concrete engines live behind their own extras
-# so users only pull in the heavy ML dependencies they actually need.
-#   * faster-whisper — local Whisper via CTranslate2 (default, MIT)
-#   * openai         — OpenAI Whisper API client (cloud)
 stt = [
     "opuslib>=3",
-]
-stt-faster-whisper = [
-    "stackchan-mcp[stt]",
-    "faster-whisper>=1.0",
-]
-stt-openai = [
-    "stackchan-mcp[stt]",
-    "openai>=1.0",
 ]
 
 [project.urls]

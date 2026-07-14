@@ -475,18 +475,18 @@ async def test_say_returns_clean_error_when_device_disconnected(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_default_registry_includes_voicevox():
-    """The default registry registers VOICEVOX at import time.
+async def test_default_registry_includes_ttscore():
+    """The default registry registers TTSCore at import time.
 
-    PR2 of Issue #70 wires VOICEVOX in via ``tts/__init__.py`` so users
-    who install the ``[tts]`` extra can call ``say`` without needing
+    ``tts/__init__.py`` registers the TTSCore engine so users who have
+    the local TTS Core service running can call ``say`` without needing
     to register an engine themselves. This test pins that contract.
     """
-    assert "voicevox" in get_registry().names()
+    assert "ttscore" in get_registry().names()
 
 
 # ---------------------------------------------------------------------------
-# say handler regression tests — degraded VOICEVOX / mid-stream disconnect
+# say handler regression tests — a failing TTS engine / mid-stream disconnect
 # must produce error JSON, not stack traces. Codex adversarial review
 # flagged that this contract was previously only verified at the
 # orchestrator level; these tests close the loop through create_server().
@@ -494,8 +494,8 @@ async def test_default_registry_includes_voicevox():
 
 
 @pytest.mark.asyncio
-async def test_say_returns_error_json_when_voicevox_returns_5xx(monkeypatch):
-    """A 503 from VOICEVOX surfaces as ``{"error": ...}``, not a traceback."""
+async def test_say_returns_error_json_when_ttscore_returns_5xx(monkeypatch):
+    """A 503 from the TTS engine surfaces as ``{"error": ...}``, not a traceback."""
     httpx = pytest.importorskip("httpx")
 
     from stackchan_mcp.tts import EngineRegistry, TTSEngine
@@ -503,7 +503,7 @@ async def test_say_returns_error_json_when_voicevox_returns_5xx(monkeypatch):
     import stackchan_mcp.stdio_server as stdio_server
 
     class _HttpFailEngine(TTSEngine):
-        name = "voicevox"
+        name = "ttscore"
 
         async def synthesize(self, text, **opts):
             request = httpx.Request("POST", "http://test/audio_query")
@@ -542,7 +542,7 @@ async def test_say_returns_error_json_when_voicevox_returns_5xx(monkeypatch):
     )
     payload = json.loads(result.root.content[0].text)
     assert "error" in payload
-    assert "voicevox" in payload["error"].lower()
+    assert "ttscore" in payload["error"].lower()
 
 
 @pytest.mark.asyncio
@@ -557,7 +557,7 @@ async def test_say_returns_error_json_when_device_disconnects_mid_stream(
     pcm = b"\x01\x00" * 1440  # ~ 1.5 frames
 
     class _PCMEngine(TTSEngine):
-        name = "voicevox"
+        name = "ttscore"
 
         async def synthesize(self, text, **opts):
             return pcm

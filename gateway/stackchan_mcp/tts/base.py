@@ -6,9 +6,8 @@ are handled by :mod:`stackchan_mcp.tts.orchestrator` so engines stay
 focused on synthesis.
 
 This module is intentionally dependency-free: it must import cleanly
-without ``httpx`` / ``opuslib`` / ``torch`` so that callers can introspect
-the registered engines (e.g. for ``get_status``) even when the optional
-``[tts]`` / ``[tts-irodori]`` extras are not installed.
+without ``opuslib`` so that callers can introspect the registered
+engines even when the optional ``[tts]`` extra is not installed.
 """
 
 from __future__ import annotations
@@ -42,9 +41,9 @@ class TTSEngine(ABC):
             text: Text to synthesise. Implementations should reject
                 empty strings.
             **opts: Engine-specific options (e.g. ``speaker_id`` for
-                VOICEVOX, ``reference_audio`` for Irodori). Engines
-                should ignore unknown options rather than raise, so that
-                the ``say`` tool can pass a uniform argument set.
+                engines that support numeric speaker identifiers).
+                Engines should ignore unknown options rather than raise,
+                so the ``say`` tool can pass a uniform argument set.
 
         Returns:
             Raw PCM bytes at 16 kHz, mono, signed 16-bit little-endian.
@@ -56,9 +55,8 @@ class TTSEngine(ABC):
 class EngineRegistry:
     """Tracks available TTS engines by name.
 
-    Concrete engines register themselves at import time when their
-    optional dependencies are satisfied (see
-    :mod:`stackchan_mcp.tts.voicevox` and friends in follow-up PRs).
+    Concrete engines register themselves at import time (see
+    :mod:`stackchan_mcp.tts.ttscore`).
     """
 
     def __init__(self) -> None:

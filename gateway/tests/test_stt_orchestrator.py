@@ -24,7 +24,7 @@ from stackchan_mcp.stt.audio_utils import DEVICE_FRAME_DURATION_MS, DEVICE_SAMPL
 class _CapturingEngine(STTEngine):
     """Engine that returns fixed text and records what it received."""
 
-    def __init__(self, text: str = "こんにちは", name: str = "faster-whisper") -> None:
+    def __init__(self, text: str = "こんにちは", name: str = "asrcore") -> None:
         self.name = name
         self._text = text
         self.calls: list[tuple[bytes, dict[str, Any]]] = []
@@ -37,7 +37,7 @@ class _CapturingEngine(STTEngine):
 class _RaisingEngine(STTEngine):
     """Engine that always raises a configured exception."""
 
-    def __init__(self, exc: Exception, name: str = "faster-whisper") -> None:
+    def __init__(self, exc: Exception, name: str = "asrcore") -> None:
         self.name = name
         self._exc = exc
 
@@ -171,7 +171,7 @@ async def test_pipeline_drives_listen_state_and_returns_text(fake_decode, monkey
     reg.register(engine)
 
     result = await listen_and_transcribe(
-        {"duration_ms": 500, "engine": "faster-whisper", "language": "ja"},
+        {"duration_ms": 500, "engine": "asrcore", "language": "ja"},
         gateway=gateway,
         registry=reg,
     )
@@ -181,7 +181,7 @@ async def test_pipeline_drives_listen_state_and_returns_text(fake_decode, monkey
     assert esp32.listen_states[0] == ("start", "manual")
     assert esp32.listen_states[1] == ("stop", None)
 
-    assert result["engine"] == "faster-whisper"
+    assert result["engine"] == "asrcore"
     assert result["text"] == "やっほー"
     assert result["language"] == "ja"
     assert result["frame_count"] == 3
@@ -883,7 +883,7 @@ async def test_listen_motion_look_up_partial_rollback_still_restores_avatar(
 async def test_pipeline_returns_empty_text_on_no_frames(fake_decode, monkeypatch):
     """An empty capture (no frames) returns text='' rather than erroring.
 
-    Useful when a user goes silent for the full window: faster-whisper
+    Useful when a user goes silent for the full window: asrcore
     on an empty buffer would otherwise spend cycles producing noise,
     and treating "no frames" as a failure would surface as a confusing
     MCP error.
@@ -1058,7 +1058,7 @@ async def test_pipeline_translates_engine_error_to_runtime_error(fake_decode, mo
             registry=reg,
         )
 
-    assert "faster-whisper" in str(exc_info.value).lower()
+    assert "asrcore" in str(exc_info.value).lower()
     assert exc_info.value.__cause__ is cause
     # listen.stop was attempted even though transcribe failed (frames
     # arrived, slot needs to drain on the device side).

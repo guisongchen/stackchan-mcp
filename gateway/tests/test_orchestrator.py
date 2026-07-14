@@ -18,7 +18,7 @@ from stackchan_mcp.tts.audio_utils import (
 class _PCMEngine(TTSEngine):
     """Engine that returns a fixed PCM buffer and records the call."""
 
-    def __init__(self, pcm: bytes, name: str = "voicevox") -> None:
+    def __init__(self, pcm: bytes, name: str = "ttscore") -> None:
         self.name = name
         self._pcm = pcm
         self.calls: list[tuple[str, dict[str, Any]]] = []
@@ -154,7 +154,7 @@ async def test_pipeline_synthesises_encodes_and_pushes(fake_encode):
     reg.register(engine)
 
     result = await synthesize_and_send(
-        {"text": "こんにちは", "voice": "voicevox", "speaker_id": 7},
+        {"text": "こんにちは", "voice": "ttscore", "speaker_id": 7},
         gateway=gateway,
         registry=reg,
     )
@@ -164,7 +164,7 @@ async def test_pipeline_synthesises_encodes_and_pushes(fake_encode):
     assert result["sample_rate"] == DEVICE_SAMPLE_RATE
     assert result["frame_duration_ms"] == DEVICE_FRAME_DURATION_MS
     assert result["duration_ms"] == 2 * DEVICE_FRAME_DURATION_MS
-    assert result["engine"] == "voicevox"
+    assert result["engine"] == "ttscore"
     assert result["text"] == "こんにちは"
     assert result["speaker_id"] == 7
 
@@ -193,7 +193,7 @@ async def test_pipeline_passes_reference_audio_through(fake_encode):
     await synthesize_and_send(
         {
             "text": "hello",
-            "voice": "voicevox",
+            "voice": "ttscore",
             "reference_audio": "/tmp/sample.wav",
         },
         gateway=gateway,
@@ -215,7 +215,7 @@ async def test_pipeline_no_emoji_keeps_text_and_skips_face_dispatch(fake_encode)
     reg.register(engine)
 
     result = await synthesize_and_send(
-        {"text": text, "voice": "voicevox"},
+        {"text": text, "voice": "ttscore"},
         gateway=gateway,
         registry=reg,
     )
@@ -235,7 +235,7 @@ async def test_pipeline_no_emoji_keeps_text_and_skips_face_dispatch(fake_encode)
 
 @pytest.mark.asyncio
 async def test_pipeline_dispatches_face_and_strips_plain_engine_text(fake_encode):
-    """VOICEVOX-style engines get emoji-free text after the face change."""
+    """Plain engines get emoji-free text after the face change."""
     pcm = b"\x01\x00" * 960
     engine = _PCMEngine(pcm)
     esp32 = _FakeESP32(connected=True, record_lock=True)
@@ -245,7 +245,7 @@ async def test_pipeline_dispatches_face_and_strips_plain_engine_text(fake_encode
     reg.register(engine)
 
     result = await synthesize_and_send(
-        {"text": "やったね 😊  rocket 🚀", "voice": "voicevox"},
+        {"text": "やったね 😊  rocket 🚀", "voice": "ttscore"},
         gateway=gateway,
         registry=reg,
     )
@@ -284,7 +284,7 @@ async def test_pipeline_redispatches_face_after_speech_completion(fake_encode):
     reg.register(engine)
 
     result = await synthesize_and_send(
-        {"text": "great 😊", "voice": "voicevox"},
+        {"text": "great 😊", "voice": "ttscore"},
         gateway=gateway,
         registry=reg,
     )
@@ -334,7 +334,7 @@ async def test_pipeline_skips_face_redispatch_when_cancelled_mid_playback(
 
     task = asyncio.create_task(
         synthesize_and_send(
-            {"text": "wait 😊", "voice": "voicevox"},
+            {"text": "wait 😊", "voice": "ttscore"},
             gateway=gateway,
             registry=reg,
         )
@@ -352,9 +352,9 @@ async def test_pipeline_skips_face_redispatch_when_cancelled_mid_playback(
 
 @pytest.mark.asyncio
 async def test_pipeline_keeps_emoji_for_emoji_style_engine(fake_encode):
-    """Irodori-style engines receive emoji verbatim for voice styling."""
+    """Emoji-style engines receive emoji verbatim for voice styling."""
     text = "やったね 😊"
-    engine = _EmojiStylePCMEngine(b"\x01\x00" * 960, name="irodori")
+    engine = _EmojiStylePCMEngine(b"\x01\x00" * 960, name="emoji-style")
     esp32 = _FakeESP32(connected=True)
     gateway = _FakeGateway(esp32)
 
@@ -362,7 +362,7 @@ async def test_pipeline_keeps_emoji_for_emoji_style_engine(fake_encode):
     reg.register(engine)
 
     result = await synthesize_and_send(
-        {"text": text, "voice": "irodori"},
+        {"text": text, "voice": "emoji-style"},
         gateway=gateway,
         registry=reg,
     )
@@ -383,7 +383,7 @@ async def test_pipeline_emoji_only_emoji_style_engine_redispatches_face(
 ):
     """Emoji-style engines can speak emoji-only text and reassert its face."""
     text = "😊"
-    engine = _EmojiStylePCMEngine(b"\x01\x00" * 960, name="irodori")
+    engine = _EmojiStylePCMEngine(b"\x01\x00" * 960, name="emoji-style")
     esp32 = _FakeESP32(connected=True, record_lock=True)
     gateway = _FakeGateway(esp32)
 
@@ -391,7 +391,7 @@ async def test_pipeline_emoji_only_emoji_style_engine_redispatches_face(
     reg.register(engine)
 
     result = await synthesize_and_send(
-        {"text": text, "voice": "irodori"},
+        {"text": text, "voice": "emoji-style"},
         gateway=gateway,
         registry=reg,
     )
@@ -435,7 +435,7 @@ async def test_pipeline_emoji_only_plain_engine_skips_speech_before_protocol_gat
     reg.register(engine)
 
     result = await synthesize_and_send(
-        {"text": "😊", "voice": "voicevox"},
+        {"text": "😊", "voice": "ttscore"},
         gateway=gateway,
         registry=reg,
     )
@@ -473,7 +473,7 @@ async def test_pipeline_face_dispatch_failure_does_not_abort_speech(fake_encode)
     reg.register(engine)
 
     result = await synthesize_and_send(
-        {"text": "hello 😊", "voice": "voicevox"},
+        {"text": "hello 😊", "voice": "ttscore"},
         gateway=gateway,
         registry=reg,
     )
@@ -514,7 +514,7 @@ async def test_pipeline_face_payload_ok_false_reports_failure(
     reg.register(engine)
 
     result = await synthesize_and_send(
-        {"text": "hello 😊", "voice": "voicevox"},
+        {"text": "hello 😊", "voice": "ttscore"},
         gateway=gateway,
         registry=reg,
     )
@@ -555,7 +555,7 @@ async def test_pipeline_face_odd_result_payloads_still_count_as_success(
     reg.register(engine)
 
     result = await synthesize_and_send(
-        {"text": "hello 😊", "voice": "voicevox"},
+        {"text": "hello 😊", "voice": "ttscore"},
         gateway=gateway,
         registry=reg,
     )
@@ -742,7 +742,7 @@ async def test_pipeline_raises_when_engine_returns_no_pcm(fake_encode):
 class _RaisingEngine(TTSEngine):
     """Engine that fails synthesise with a configurable exception."""
 
-    def __init__(self, exc: Exception, name: str = "voicevox") -> None:
+    def __init__(self, exc: Exception, name: str = "ttscore") -> None:
         self.name = name
         self._exc = exc
 
@@ -774,7 +774,7 @@ async def test_engine_http_error_translated_to_runtime_error(fake_encode):
             gateway=gateway,
             registry=reg,
         )
-    assert "voicevox" in str(exc_info.value).lower()
+    assert "ttscore" in str(exc_info.value).lower()
     assert isinstance(exc_info.value.__cause__, httpx.HTTPStatusError)
 
 

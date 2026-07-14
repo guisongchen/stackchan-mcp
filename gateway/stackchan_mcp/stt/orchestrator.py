@@ -303,8 +303,8 @@ async def listen_and_transcribe(
               :data:`DEFAULT_ENGINE`.
             * ``language``: ISO 639-1 code (e.g. ``"ja"``) or ``None``
               for autodetect.
-            * ``model``: engine-specific model identifier (e.g.
-              ``"base"`` / ``"small"`` for faster-whisper).
+            * ``model``: engine-specific model identifier; ignored by
+              the default ASRCore engine.
 
         gateway: The :class:`Gateway` instance whose ESP32 manager
             this call drives. Required for the pipeline; left optional

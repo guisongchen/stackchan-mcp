@@ -2271,20 +2271,18 @@ def create_server(notify_config: NotifyConfig | None = None) -> StackChanServer:
                 name="say",
                 description=(
                     "Speak the given text on the device speaker via gateway-side "
-                    "TTS. The gateway synthesises audio, encodes it to Opus, "
-                    "and pushes frames over the existing WebSocket; the device "
-                    "firmware does not change. Engine is selectable via 'voice' "
-                    "(default 'voicevox'). If the text contains a supported "
-                    "expression emoji, say first switches the avatar face in the "
-                    "same call: happy (😊 😄 😀 😁 🙂 😆 🥰 😍 😋 🤗), "
+                    "TTS. The gateway synthesises audio through the local TTS Core "
+                    "service, encodes it to Opus, and pushes frames over the "
+                    "existing WebSocket; the device firmware does not change. "
+                    "Engine is selectable via 'voice' (default 'ttscore'). If the "
+                    "text contains a supported expression emoji, say first switches "
+                    "the avatar face in the same call: happy (😊 😄 😀 😁 🙂 😆 🥰 😍 😋 🤗), "
                     "sad (😢 😭 😞 😔 ☹️ 🙁 😿), surprised (😲 😮 😯 😱 🤯), "
                     "embarrassed (😳 😅 🫣), thinking (🤔 🧐 💭). The first "
                     "mapped emoji wins; unmapped emoji do not change the face, "
-                    "and emoji never select 'off'. Irodori keeps emoji in the "
-                    "TTS input so they can act as voice-style cues. Engines "
-                    "without emoji-style support, including VOICEVOX, strip all "
-                    "emoji before synthesis; if stripping leaves empty text, the "
-                    "face change is still attempted and speech is skipped."
+                    "and emoji never select 'off'. The default TTSCore engine "
+                    "strips emoji before synthesis; if stripping leaves empty text, "
+                    "the face change is still attempted and speech is skipped."
                 ),
                 inputSchema={
                     "type": "object",
@@ -2296,36 +2294,30 @@ def create_server(notify_config: NotifyConfig | None = None) -> StackChanServer:
                         "voice": {
                             "type": "string",
                             "description": (
-                                "Engine identifier (e.g. 'voicevox', 'irodori'). "
-                                "Default 'voicevox'."
+                                "Engine identifier. Default 'ttscore'."
                             ),
-                            "default": "voicevox",
+                            "default": "ttscore",
                         },
                         "speaker_id": {
                             "type": "integer",
                             "description": (
-                                "Engine-specific numeric speaker identifier "
-                                "(e.g. a VOICEVOX speaker ID)."
+                                "Engine-specific numeric speaker identifier; "
+                                "ignored by the default TTSCore engine."
                             ),
                         },
                         "speaker_name": {
                             "type": "string",
                             "description": (
-                                "Engine-specific string speaker/voice "
-                                "identifier (e.g. an Edge TTS voice name "
-                                "such as 'en-US-AriaNeural'). Distinct from "
-                                "'voice', which selects the engine itself "
-                                "(e.g. 'edge-tts'); use speaker_name for "
-                                "engines whose speaker selector is a string "
-                                "name rather than the numeric speaker_id."
+                                "Engine-specific string speaker/voice identifier. "
+                                "Ignored by the default TTSCore engine."
                             ),
                         },
                         "reference_audio": {
                             "type": "string",
                             "description": (
                                 "Path to a reference audio file used by "
-                                "voice-cloning engines (e.g. Irodori). "
-                                "Ignored by engines that do not support it."
+                                "voice-cloning engines. Ignored by the default "
+                                "TTSCore engine."
                             ),
                         },
                     },
@@ -2336,7 +2328,7 @@ def create_server(notify_config: NotifyConfig | None = None) -> StackChanServer:
                 name="listen",
                 description=(
                     "Capture a short utterance from the device microphone and "
-                    "transcribe it via a gateway-side STT engine (Phase 4, "
+                    "transcribe it via the local ASR Core service (Phase 4, "
                     "Issue #91). The gateway sends a 'listen' notification "
                     "over the existing WebSocket to put the device firmware "
                     "into listening mode, buffers the Opus frames the device "
@@ -2344,14 +2336,11 @@ def create_server(notify_config: NotifyConfig | None = None) -> StackChanServer:
                     "transcribes them once the window closes. Requires a "
                     "minimal firmware change to handle the inbound 'listen' "
                     "wire type (paired with this gateway release). Engine is "
-                    "selectable via 'engine' (default 'faster-whisper', local). "
+                    "selectable via 'engine' (default 'asrcore', local). "
                     "Optional 'motion' feedback can switch the avatar to "
                     "'thinking' during capture ('face-only') or tilt the head "
-                    "up while preserving yaw ('look-up'). "
-                    "Install the relevant extra "
-                    "('pip install stackchan-mcp[stt-faster-whisper]' or "
-                    "'stt-openai'); calling this tool before an engine is "
-                    "registered returns a clear error."
+                    "up while preserving yaw ('look-up'). Calling this tool "
+                    "before the ASR Core service is reachable returns a clear error."
                 ),
                 inputSchema={
                     "type": "object",
@@ -2369,10 +2358,9 @@ def create_server(notify_config: NotifyConfig | None = None) -> StackChanServer:
                         "engine": {
                             "type": "string",
                             "description": (
-                                "Engine identifier (e.g. 'faster-whisper', "
-                                "'openai-whisper'). Default 'faster-whisper'."
+                                "Engine identifier. Default 'asrcore'."
                             ),
-                            "default": "faster-whisper",
+                            "default": "asrcore",
                         },
                         "language": {
                             "type": "string",
@@ -2385,10 +2373,8 @@ def create_server(notify_config: NotifyConfig | None = None) -> StackChanServer:
                         "model": {
                             "type": "string",
                             "description": (
-                                "Engine-specific model identifier (e.g. "
-                                "'base' / 'small' / 'medium' for faster-"
-                                "whisper, 'whisper-1' for OpenAI). Engines "
-                                "fall back to their default when omitted."
+                                "Engine-specific model identifier; ignored by "
+                                "the default ASRCore engine."
                             ),
                         },
                         "motion": {

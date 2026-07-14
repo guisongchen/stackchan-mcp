@@ -6,12 +6,12 @@ registered in :mod:`stackchan_mcp.tts`. It validates arguments, looks
 up an engine, runs the synthesis, encodes the result to Opus, and
 hands the frames off to :mod:`stackchan_mcp.audio_stream` for delivery.
 
-The framework half (Engine ABC, registry, validation surface) shipped
-in PR1 of Issue #70; PR2 wires the actual VOICEVOX → PCM → Opus →
-WebSocket pipeline. The signature stays back-compatible with PR1's
-tests: ``gateway`` is keyword-only and may be omitted, in which case
-calls that pass validation surface a clear error instead of silently
-synthesising audio with no destination.
+The default engine is TTSCore, which talks to the local TTS Core
+service over ``/tmp/tts_core.sock`` and returns 16 kHz mono PCM. The
+signature stays back-compatible with earlier tests: ``gateway`` is
+keyword-only and may be omitted, in which case calls that pass
+validation surface a clear error instead of silently synthesising audio
+with no destination.
 """
 
 from __future__ import annotations
@@ -167,10 +167,11 @@ async def synthesize_and_send(
             * ``voice``: engine name; when omitted, the default is
               resolved from ``STACKCHAN_TTS_ENGINE`` and otherwise
               :data:`DEFAULT_VOICE`.
-            * ``speaker_id``: engine-specific speaker identifier
-              (e.g. VOICEVOX speaker).
-            * ``reference_audio``: path to a reference audio sample
-              (e.g. for Irodori voice cloning, PR3).
+            * ``speaker_id``: engine-specific numeric speaker identifier;
+              ignored by the default TTSCore engine.
+            * ``reference_audio``: path to a reference audio sample for
+              voice-cloning engines; ignored by the default TTSCore
+              engine.
 
         gateway: The :class:`Gateway` instance whose
             :attr:`Gateway.esp32` the audio frames are pushed through.
@@ -311,8 +312,8 @@ async def synthesize_and_send(
             "BinaryProtocol header wrapping is not yet supported."
         )
 
-    # Engine failures (HTTP errors from VOICEVOX, malformed WAV from
-    # the synthesiser, etc.) are translated to RuntimeError so the
+    # Engine failures (HTTP errors from the TTS service, malformed WAV
+    # from the synthesiser, etc.) are translated to RuntimeError so the
     # MCP layer's narrow exception filter still produces clean error
     # JSON. Validation errors (ValueError) are kept distinct so bad
     # arguments stay separable from operational degradation.

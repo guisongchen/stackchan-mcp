@@ -49,26 +49,26 @@ def test_registry_rejects_engine_with_empty_name():
 def test_registry_register_get_names_roundtrip():
     """register/get/names form a consistent set."""
     reg = EngineRegistry()
-    engine = _FakeEngine(name="faster-whisper")
+    engine = _FakeEngine(name="asrcore")
 
     reg.register(engine)
 
-    assert reg.get("faster-whisper") is engine
+    assert reg.get("asrcore") is engine
     assert reg.get("nonexistent") is None
-    assert reg.names() == ["faster-whisper"]
+    assert reg.names() == ["asrcore"]
 
 
 def test_registry_register_replaces_same_name():
     """Re-registering the same name swaps the engine — useful for tests."""
     reg = EngineRegistry()
-    first = _FakeEngine(name="faster-whisper")
-    second = _FakeEngine(name="faster-whisper")
+    first = _FakeEngine(name="asrcore")
+    second = _FakeEngine(name="asrcore")
 
     reg.register(first)
     reg.register(second)
 
-    assert reg.get("faster-whisper") is second
-    assert reg.names() == ["faster-whisper"]
+    assert reg.get("asrcore") is second
+    assert reg.names() == ["asrcore"]
 
 
 def test_registry_names_are_sorted():
@@ -87,8 +87,8 @@ def test_get_registry_returns_singleton():
 
 
 def test_default_engine_constant():
-    """The default engine is the planned faster-whisper local engine."""
-    assert DEFAULT_ENGINE == "faster-whisper"
+    """The default engine is the planned asrcore local engine."""
+    assert DEFAULT_ENGINE == "asrcore"
 
 
 @pytest.mark.asyncio
@@ -141,7 +141,7 @@ async def test_listen_unregistered_engine_raises():
         )
 
     msg = str(exc_info.value)
-    assert "faster-whisper" in msg
+    assert "asrcore" in msg
     assert "(none)" in msg
 
 
@@ -169,7 +169,7 @@ async def test_listen_engine_default_falls_back():
 async def test_listen_requires_gateway():
     """Validation passes but pipeline refuses without a gateway argument."""
     reg = EngineRegistry()
-    reg.register(_FakeEngine(name="faster-whisper"))
+    reg.register(_FakeEngine(name="asrcore"))
 
     with pytest.raises(RuntimeError, match="gateway"):
         await listen_and_transcribe(
@@ -186,7 +186,7 @@ async def test_listen_lists_available_engines_in_error():
 
     with pytest.raises(NotImplementedError) as exc_info:
         await listen_and_transcribe(
-            {"duration_ms": 1000, "engine": "faster-whisper"},
+            {"duration_ms": 1000, "engine": "asrcore"},
             registry=reg,
         )
 

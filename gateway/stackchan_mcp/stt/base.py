@@ -6,9 +6,9 @@ PCM buffering are handled by :mod:`stackchan_mcp.stt.orchestrator` so
 engines stay focused on recognition.
 
 This module is intentionally dependency-free: it must import cleanly
-without ``faster-whisper`` / ``openai`` / ``opuslib`` so that callers
-can introspect the registered engines even when the optional ``[stt]``
-extras are not installed. Mirrors :mod:`stackchan_mcp.tts.base`.
+without ``opuslib`` so that callers can introspect the registered
+engines even when the optional ``[stt]`` extra is not installed. Mirrors
+:mod:`stackchan_mcp.tts.base`.
 """
 
 from __future__ import annotations
@@ -39,11 +39,9 @@ class STTEngine(ABC):
                 and frame concatenation before calling this method.
             **opts: Engine-specific options. Recognised keys include
                 ``language`` (ISO 639-1 code, e.g. ``"ja"``, or
-                ``None`` for autodetect) and ``model`` (engine-specific
-                model name, e.g. ``"base"`` / ``"small"`` for
-                faster-whisper). Engines should ignore unknown options
-                rather than raise, so the ``listen`` tool can pass a
-                uniform argument set.
+                ``None`` for autodetect). Engines should ignore unknown
+                options rather than raise, so the ``listen`` tool can pass
+                a uniform argument set.
 
         Returns:
             Dict with at least ``text`` (transcribed string) and
@@ -58,10 +56,8 @@ class STTEngine(ABC):
 class EngineRegistry:
     """Tracks available STT engines by name.
 
-    Concrete engines register themselves at import time when their
-    optional dependencies are satisfied (see
-    :mod:`stackchan_mcp.stt.faster_whisper` and
-    :mod:`stackchan_mcp.stt.openai_whisper`).
+    Concrete engines register themselves at import time (see
+    :mod:`stackchan_mcp.stt.asrcore`).
     """
 
     def __init__(self) -> None:

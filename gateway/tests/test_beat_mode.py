@@ -60,7 +60,7 @@ class _FakeGateway:
 
 
 class _NoopEngine(STTEngine):
-    name = "faster-whisper"
+    name = "asrcore"
 
     async def transcribe(self, pcm: bytes, **opts: Any) -> dict[str, Any]:
         return {"text": "", "language": opts.get("language") or "ja"}

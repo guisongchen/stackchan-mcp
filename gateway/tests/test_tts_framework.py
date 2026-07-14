@@ -51,26 +51,26 @@ def test_registry_rejects_engine_with_empty_name():
 def test_registry_register_get_names_roundtrip():
     """register/get/names form a consistent set."""
     reg = EngineRegistry()
-    engine = _FakeEngine(name="voicevox")
+    engine = _FakeEngine(name="ttscore")
 
     reg.register(engine)
 
-    assert reg.get("voicevox") is engine
+    assert reg.get("ttscore") is engine
     assert reg.get("nonexistent") is None
-    assert reg.names() == ["voicevox"]
+    assert reg.names() == ["ttscore"]
 
 
 def test_registry_register_replaces_same_name():
     """Re-registering the same name swaps the engine — useful for tests."""
     reg = EngineRegistry()
-    first = _FakeEngine(name="voicevox")
-    second = _FakeEngine(name="voicevox")
+    first = _FakeEngine(name="ttscore")
+    second = _FakeEngine(name="ttscore")
 
     reg.register(first)
     reg.register(second)
 
-    assert reg.get("voicevox") is second
-    assert reg.names() == ["voicevox"]
+    assert reg.get("ttscore") is second
+    assert reg.names() == ["ttscore"]
 
 
 def test_registry_names_are_sorted():
@@ -89,12 +89,12 @@ def test_get_registry_returns_singleton():
 
 
 def test_default_voice_constant():
-    """The default voice is the planned VOICEVOX engine."""
-    assert DEFAULT_VOICE == "voicevox"
+    """The default voice is the TTSCore engine."""
+    assert DEFAULT_VOICE == "ttscore"
 
 
 def test_tts_engine_defaults_to_no_emoji_style_support():
-    engine = _FakeEngine(name="voicevox")
+    engine = _FakeEngine(name="ttscore")
     assert engine.supports_emoji_style is False
 
 
@@ -130,7 +130,7 @@ async def test_synthesize_and_send_unregistered_voice_raises():
         await synthesize_and_send({"text": "hello"}, registry=reg)
 
     msg = str(exc_info.value)
-    assert "voicevox" in msg
+    assert "ttscore" in msg
     assert "(none)" in msg
 
 
@@ -143,7 +143,7 @@ async def test_synthesize_and_send_requires_gateway():
     argument-shape surface without spinning up a Gateway.
     """
     reg = EngineRegistry()
-    reg.register(_FakeEngine(name="voicevox"))
+    reg.register(_FakeEngine(name="ttscore"))
 
     with pytest.raises(RuntimeError, match="gateway"):
         await synthesize_and_send({"text": "hello"}, registry=reg)
@@ -174,7 +174,7 @@ async def test_synthesize_and_send_lists_available_engines_in_error():
 
     with pytest.raises(NotImplementedError) as exc_info:
         await synthesize_and_send(
-            {"text": "hello", "voice": "voicevox"}, registry=reg
+            {"text": "hello", "voice": "ttscore"}, registry=reg
         )
 
     msg = str(exc_info.value)
@@ -187,7 +187,7 @@ async def test_synthesize_and_send_lists_available_engines_in_error():
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_default_engine_unset_is_voicevox(monkeypatch):
+def test_resolve_default_engine_unset_is_ttscore(monkeypatch):
     """No STACKCHAN_TTS_ENGINE -> the built-in DEFAULT_VOICE."""
     monkeypatch.delenv(TTS_ENGINE_ENV_VAR, raising=False)
     assert _resolve_default_engine() == DEFAULT_VOICE
@@ -195,8 +195,8 @@ def test_resolve_default_engine_unset_is_voicevox(monkeypatch):
 
 def test_resolve_default_engine_env_override(monkeypatch):
     """STACKCHAN_TTS_ENGINE selects the default engine."""
-    monkeypatch.setenv(TTS_ENGINE_ENV_VAR, "irodori")
-    assert _resolve_default_engine() == "irodori"
+    monkeypatch.setenv(TTS_ENGINE_ENV_VAR, "emoji-style")
+    assert _resolve_default_engine() == "emoji-style"
 
 
 def test_resolve_default_engine_blank_env_ignored(monkeypatch):
@@ -213,29 +213,29 @@ async def test_synthesize_and_send_uses_env_default_engine(monkeypatch):
     us confirm the orchestrator consulted STACKCHAN_TTS_ENGINE without
     standing up a full gateway.
     """
-    monkeypatch.setenv(TTS_ENGINE_ENV_VAR, "irodori")
+    monkeypatch.setenv(TTS_ENGINE_ENV_VAR, "emoji-style")
     reg = EngineRegistry()
 
     with pytest.raises(NotImplementedError) as exc_info:
         await synthesize_and_send({"text": "hello"}, registry=reg)
 
-    assert "irodori" in str(exc_info.value)
+    assert "emoji-style" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
 async def test_explicit_voice_overrides_env_default(monkeypatch):
     """An explicit 'voice' argument still wins over STACKCHAN_TTS_ENGINE."""
-    monkeypatch.setenv(TTS_ENGINE_ENV_VAR, "irodori")
+    monkeypatch.setenv(TTS_ENGINE_ENV_VAR, "emoji-style")
     reg = EngineRegistry()
 
     with pytest.raises(NotImplementedError) as exc_info:
         await synthesize_and_send(
-            {"text": "hello", "voice": "voicevox"}, registry=reg
+            {"text": "hello", "voice": "ttscore"}, registry=reg
         )
 
     msg = str(exc_info.value)
-    assert "voicevox" in msg
-    assert "irodori" not in msg
+    assert "ttscore" in msg
+    assert "emoji-style" not in msg
 
 
 @pytest.mark.asyncio

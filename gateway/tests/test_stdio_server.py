@@ -204,32 +204,17 @@ async def test_get_head_angles_relays_to_esp32(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_list_tools_includes_gateway_config_tools():
-    """gateway_config_get/set are exposed with the expected schemas."""
+async def test_gateway_config_tools_not_in_list_tools():
+    """gateway_config_get/set are NOT exposed via list_tools but remain dispatchable."""
     server = create_server()
 
     result = await server.request_handlers[ListToolsRequest](
         ListToolsRequest(method="tools/list")
     )
 
-    tools = {tool.name: tool for tool in result.root.tools}
-    assert "gateway_config_get" in tools
-    assert "gateway_config_set" in tools
-
-    get_schema = tools["gateway_config_get"].inputSchema
-    assert get_schema == {"type": "object", "properties": {}}
-    assert "mDNS" in tools["gateway_config_get"].description
-    assert "force_mode" in tools["gateway_config_get"].description
-
-    set_tool = tools["gateway_config_set"]
-    set_schema = set_tool.inputSchema
-    assert set(set_schema["properties"]) == {"url", "fallback_url", "token"}
-    assert "required" not in set_schema
-    assert set_schema["properties"]["url"]["type"] == "string"
-    assert set_schema["properties"]["fallback_url"]["type"] == "string"
-    assert set_schema["properties"]["token"]["type"] == "string"
-    assert "empty string clears" in set_tool.description
-    assert "next reconnect" in set_tool.description
+    tools = {tool.name for tool in result.root.tools}
+    assert "gateway_config_get" not in tools
+    assert "gateway_config_set" not in tools
 
 
 @pytest.mark.asyncio
@@ -770,117 +755,37 @@ def _ws2812_tool_names(port: str) -> tuple[str, ...]:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("port", "port_label", "gpio_label"), _WS2812_PORTS)
-async def test_list_tools_includes_ws2812_tools_with_schemas(
+@pytest.mark.parametrize("port", ("port_b", "port_c"))
+async def test_list_tools_excludes_ws2812_tools(
     port,
-    port_label,
-    gpio_label,
 ):
-    """Port B/C WS2812 wrappers are exposed with LLM-facing schemas."""
+    """Port B/C WS2812 tools are NOT exposed via list_tools but remain dispatchable."""
     server = create_server()
 
     result = await server.request_handlers[ListToolsRequest](
         ListToolsRequest(method="tools/list")
     )
 
-    tools_by_name = {tool.name: tool for tool in result.root.tools}
+    tools_by_name = {tool.name for tool in result.root.tools}
     for tool_name in _ws2812_tool_names(port):
-        assert tool_name in tools_by_name, f"{tool_name} tool should be registered"
-        description = tools_by_name[tool_name].description
-        assert port_label in description
-        assert gpio_label in description
-        assert "3.3 V CMOS data" in description
-        assert "level shifter" in description
-
-    init_schema = tools_by_name[f"{port}_ws2812_init"].inputSchema
-    assert init_schema["properties"]["led_count"] == {
-        "type": "integer",
-        "description": "Number of LEDs in the strip (1..256).",
-        "minimum": 1,
-        "maximum": 256,
-    }
-    assert init_schema["properties"]["color_order"] == {
-        "type": "string",
-        "enum": ["grb", "rgb"],
-        "default": "grb",
-        "description": (
-            "Logical LED color order. Use grb for standard WS2812/NeoPixel "
-            "strips, or rgb for RGB-wired LEDs; the gateway swaps R/G before "
-            "forwarding colors to the firmware."
-        ),
-    }
-    assert init_schema["required"] == ["led_count"]
-
-    pixel_schema = tools_by_name[f"{port}_ws2812_set_pixel"].inputSchema
-    assert pixel_schema["properties"]["index"]["minimum"] == 0
-    assert pixel_schema["properties"]["index"]["maximum"] == 255
-    for channel in ("r", "g", "b"):
-        assert pixel_schema["properties"][channel]["minimum"] == 0
-        assert pixel_schema["properties"][channel]["maximum"] == 255
-    assert pixel_schema["properties"]["refresh"] == {
-        "type": "boolean",
-        "description": "True to latch the update immediately.",
-        "default": False,
-    }
-    assert pixel_schema["required"] == ["index", "r", "g", "b"]
-
-    strip_schema = tools_by_name[f"{port}_ws2812_set_strip"].inputSchema
-    colors_schema = strip_schema["properties"]["colors"]
-    assert colors_schema["type"] == "array"
-    assert colors_schema["minItems"] == 1
-    assert colors_schema["maxItems"] == 256
-    assert colors_schema["items"]["type"] == "array"
-    assert colors_schema["items"]["minItems"] == 3
-    assert colors_schema["items"]["maxItems"] == 3
-    assert colors_schema["items"]["items"] == {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-    }
-    assert strip_schema["required"] == ["colors"]
-
-    for tool_name in (f"{port}_ws2812_refresh", f"{port}_ws2812_clear"):
-        assert tools_by_name[tool_name].inputSchema == {
-            "type": "object",
-            "properties": {},
-        }
+        assert tool_name not in tools_by_name, f"{tool_name} should NOT be registered in list_tools"
 
 
 _PORT_A_I2C_TOOL_NAMES = ("i2c_read", "i2c_write", "i2c_write_read")
 
 
 @pytest.mark.asyncio
-async def test_list_tools_port_a_i2c_declares_scl_speed_hz_schema():
-    """Port A I2C wrappers expose the per-transaction clock schema."""
+async def test_list_tools_excludes_port_a_i2c_tools():
+    """Port A I2C wrappers are NOT exposed via list_tools but remain dispatchable."""
     server = create_server()
 
     result = await server.request_handlers[ListToolsRequest](
         ListToolsRequest(method="tools/list")
     )
 
-    tools_by_name = {tool.name: tool for tool in result.root.tools}
+    tools_by_name = {tool.name for tool in result.root.tools}
     for tool_name in _PORT_A_I2C_TOOL_NAMES:
-        assert tool_name in tools_by_name, f"{tool_name} tool should be registered"
-        description = tools_by_name[tool_name].description
-        assert "scl_speed_hz" in description
-        assert "400000" in description
-        assert "RCWL-9620" in description
-        assert "ESP_ERR_INVALID_STATE" in description
-
-        schema = tools_by_name[tool_name].inputSchema
-        assert schema["properties"]["scl_speed_hz"] == {
-            "type": "integer",
-            "default": 400000,
-            "description": (
-                "I2C clock for this transaction. Default 400000; lower it "
-                "(e.g. 100000 or 200000) for slower Units such as the "
-                "RCWL-9620 ultrasonic ranger that fail at 400 kHz with "
-                "ESP_ERR_INVALID_STATE."
-            ),
-            "minimum": 100000,
-            "maximum": 1000000,
-        }
-        assert "scl_speed_hz" not in schema["required"]
+        assert tool_name not in tools_by_name, f"{tool_name} should NOT be registered in list_tools"
 
 
 @pytest.mark.asyncio
@@ -1136,7 +1041,8 @@ async def test_ws2812_rgb_color_order_swaps_channels_until_reinitialized(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("port", ["port_b", "port_c"])
-async def test_ws2812_init_rejects_invalid_color_order(monkeypatch, port):
+async def test_ws2812_init_gateway_rejects_invalid_color_order(monkeypatch, port):
+    """Gateway-side validation catches invalid color_order before ES32 relay."""
     calls = _make_ws2812_fake_gateway(monkeypatch)
     server = create_server()
 
@@ -1151,8 +1057,7 @@ async def test_ws2812_init_rejects_invalid_color_order(monkeypatch, port):
     )
 
     assert calls == []
-    assert "Input validation error" in result.root.content[0].text
-    assert "'bgr' is not one of ['grb', 'rgb']" in result.root.content[0].text
+    assert "color_order must be 'grb' or 'rgb'" in result.root.content[0].text
 
 
 # ---------------------------------------------------------------------------

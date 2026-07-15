@@ -366,6 +366,24 @@ async def api_blink(request: Request) -> JSONResponse:
     )
 
 
+async def api_call_tool(request: Request) -> JSONResponse:
+    """Generic tool call: POST /api/call {"tool": "self.robot.uart_diag", "args": {}}"""
+    body = await _safe_json_body(request)
+    if body is None:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+    tool = body.get("tool")
+    args = body.get("args", {})
+    if not isinstance(tool, str) or not tool:
+        return JSONResponse(
+            {"ok": False, "error": "tool must be a non-empty string"}, status_code=400
+        )
+    if not isinstance(args, dict):
+        return JSONResponse(
+            {"ok": False, "error": "args must be a dict"}, status_code=400
+        )
+    return await _extract_result_text(_get_gateway(request), tool, args)
+
+
 async def dashboard_handler(_request: Request) -> HTMLResponse:
     html = _load_dashboard_html()
     if html is None:
@@ -407,6 +425,7 @@ def _dashboard_routes() -> list[Route]:
         Route("/api/torque", endpoint=api_torque_post, methods=["POST"]),
         Route("/api/torque/auto-release", endpoint=api_auto_torque_release_post, methods=["POST"]),
         Route("/api/blink", endpoint=api_blink, methods=["POST"]),
+        Route("/api/call", endpoint=api_call_tool, methods=["POST"]),
         Route("/", endpoint=dashboard_handler, methods=["GET"]),
     ]
 

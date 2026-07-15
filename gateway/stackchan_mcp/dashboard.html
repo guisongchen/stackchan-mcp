@@ -187,6 +187,26 @@
     </div>
   </div>
 
+  <!-- Diagnostic -->
+  <div class="card">
+    <h2>诊断工具</h2>
+    <div class="row">
+      <select id="diagTool" style="flex:1">
+        <option value="self.robot.gpio_test">gpio_test - GPIO6 翻转测试</option>
+        <option value="self.robot.uart_diag">uart_diag - 舵机 UART 诊断</option>
+        <option value="self.robot.check_vm_en">check_vm_en - 舵机电源状态</option>
+        <option value="self.gateway_config.get">gateway_config_get - 网关配置</option>
+        <option value="self.i2c.scan">i2c_scan - I2C 总线扫描</option>
+      </select>
+    </div>
+    <div class="row">
+      <label style="font-size:0.75rem">参数(JSON)</label>
+      <input type="text" id="diagArgs" value="{}" style="flex:1;background:var(--accent);color:var(--text);border:none;border-radius:6px;padding:6px 10px;font-size:0.8rem">
+    </div>
+    <button class="primary" id="btnDiag">执行</button>
+    <pre id="diagResult" style="margin-top:8px;padding:8px;background:var(--bg);border-radius:4px;font-size:0.75rem;color:var(--muted);max-height:200px;overflow:auto;display:none"></pre>
+  </div>
+
 </div>
 
 <div class="toast" id="toast"></div>
@@ -370,6 +390,23 @@
     var timeoutMs = parseInt(document.getElementById('autoReleaseTimeout').value);
     callApi('POST', '/api/torque/auto-release', { enabled: true, timeout_ms: timeoutMs }, function(data) {
       showToast(data.ok ? '释放超时已设为 ' + (timeoutMs/1000) + ' 秒' : (data.error || 'Error'), !data.ok);
+    });
+  });
+
+  // --- Diagnostic ---
+  document.getElementById('btnDiag').addEventListener('click', function() {
+    var tool = document.getElementById('diagTool').value;
+    var argsStr = document.getElementById('diagArgs').value;
+    var args = {};
+    try { args = JSON.parse(argsStr); } catch(e) {
+      showToast('参数 JSON 格式错误', true);
+      return;
+    }
+    var resultEl = document.getElementById('diagResult');
+    resultEl.style.display = 'block';
+    resultEl.textContent = '执行中...';
+    callApi('POST', '/api/call', { tool: tool, args: args }, function(data) {
+      resultEl.textContent = JSON.stringify(data, null, 2);
     });
   });
 

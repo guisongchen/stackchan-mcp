@@ -58,6 +58,8 @@ from typing import TYPE_CHECKING, AsyncIterator
 
 from aiohttp import web
 
+from .notify_confirmation import notify_confirmation_on_device
+
 if TYPE_CHECKING:
     from .gateway import Gateway
 
@@ -432,6 +434,44 @@ async def handle_pcm(request: web.Request) -> web.Response:
     return web.Response(text=json.dumps(result), content_type="application/json")
 
 
+async def handle_notify_confirmation(request: web.Request) -> web.Response:
+    """HTTP endpoint for Claude Code hooks to push confirmation notifications.
+
+    Reads a JSON body with ``title`` and ``message``, speaks it on StackChan,
+    and returns immediately. Failures are logged but always return ``ok`` so
+    the terminal prompt is never blocked.
+    """
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError as exc:
+        return web.Response(
+            text=json.dumps({"ok": False, "error": f"invalid json: {exc}"}),
+            status=400,
+            content_type="application/json",
+        )
+
+    title = payload.get("title", "")
+    message = payload.get("message", "")
+
+    gateway = request.app.get(GATEWAY_KEY)
+    if gateway is None:
+        return web.Response(
+            text=json.dumps({"ok": False, "error": "gateway not available"}),
+            status=503,
+            content_type="application/json",
+        )
+
+    try:
+        await notify_confirmation_on_device(title, message, gateway)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("handle_notify_confirmation failed: %s", exc)
+
+    return web.Response(
+        text=json.dumps({"ok": True}),
+        content_type="application/json",
+    )
+
+
 def create_capture_app(
     capture_token: str = "",
     pcm_token: str = "",
@@ -478,4 +518,5 @@ def create_capture_app(
     app.router.add_post("/capture", handle_capture)
     app.router.add_get("/avatar_set/{short_id}", handle_avatar_set_fetch)
     app.router.add_post("/pcm", handle_pcm)
+    app.router.add_post("/notify_confirmation", handle_notify_confirmation)
     return app

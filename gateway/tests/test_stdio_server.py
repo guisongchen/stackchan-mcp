@@ -7,6 +7,7 @@ import pytest
 from mcp.types import CallToolRequest, ListToolsRequest
 
 from stackchan_mcp.notify_config import DEFAULT_MESSAGE_TEMPLATES, NotifyConfig
+import stackchan_mcp.notify_confirmation as notify_confirmation
 import stackchan_mcp.stdio_server as stdio_server
 from stackchan_mcp.stdio_server import (
     CHANNEL_CAPABILITY,
@@ -103,7 +104,9 @@ async def test_notify_confirmation_speaks_summary(monkeypatch):
         esp32 = FakeESP32()
 
     monkeypatch.setattr(stdio_server, "get_gateway", lambda: FakeGateway())
-    monkeypatch.setattr(stdio_server, "synthesize_and_send", fake_synthesize_and_send)
+    monkeypatch.setattr(
+        notify_confirmation, "synthesize_and_send", fake_synthesize_and_send
+    )
     server = create_server()
 
     result = await server.request_handlers[CallToolRequest](
@@ -140,7 +143,9 @@ async def test_notify_confirmation_ok_when_device_offline(monkeypatch):
         esp32 = FakeESP32()
 
     monkeypatch.setattr(stdio_server, "get_gateway", lambda: FakeGateway())
-    monkeypatch.setattr(stdio_server, "synthesize_and_send", fake_synthesize_and_send)
+    monkeypatch.setattr(
+        notify_confirmation, "synthesize_and_send", fake_synthesize_and_send
+    )
     server = create_server()
 
     result = await server.request_handlers[CallToolRequest](

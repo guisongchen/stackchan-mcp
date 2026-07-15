@@ -14,8 +14,27 @@ from stackchan_mcp.capture_server import (
     PCM_TOKEN_KEY,
     _is_authorized,
     create_capture_app,
+    handle_notify_confirmation,
     handle_pcm,
 )
+
+
+class _MockPayload:
+    """Minimal async payload for make_mocked_request body tests."""
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+        self._consumed = False
+
+    async def readany(self) -> bytes:
+        if self._consumed:
+            return b""
+        self._consumed = True
+        return self._data
+
+
+def _json_payload(data: dict) -> _MockPayload:
+    return _MockPayload(json.dumps(data).encode())
 
 
 def test_capture_app_stores_capture_token():
@@ -69,6 +88,60 @@ def test_capture_app_pcm_token_defaults_to_empty():
 
     assert app[PCM_TOKEN_KEY] == ""
     assert app[GATEWAY_KEY] is None
+
+
+# ---------------------------------------------------------------------------
+# /notify_confirmation endpoint
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_notify_confirmation_endpoint_calls_helper(monkeypatch):
+    """POST /notify_confirmation forwards title/message to the device."""
+    calls = []
+
+    async def fake_notify(title, message, gateway):
+        calls.append((title, message, gateway))
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        "stackchan_mcp.capture_server.notify_confirmation_on_device",
+        fake_notify,
+    )
+
+    fake_gateway = object()
+    app = create_capture_app(capture_token="", gateway=fake_gateway)
+    request = make_mocked_request(
+        "POST",
+        "/notify_confirmation",
+        headers=CIMultiDict({"Content-Type": "application/json"}),
+        app=app,
+        payload=_json_payload({"title": "Allow?", "message": "rm -rf /tmp"}),
+    )
+
+    response = await handle_notify_confirmation(request)
+
+    assert response.status == 200
+    assert json.loads(response.text) == {"ok": True}
+    assert calls == [("Allow?", "rm -rf /tmp", fake_gateway)]
+
+
+@pytest.mark.asyncio
+async def test_notify_confirmation_endpoint_returns_ok_without_gateway():
+    """POST /notify_confirmation returns ok even when gateway is unavailable."""
+    app = create_capture_app(capture_token="")
+    request = make_mocked_request(
+        "POST",
+        "/notify_confirmation",
+        headers=CIMultiDict({"Content-Type": "application/json"}),
+        app=app,
+        payload=_json_payload({"title": "Allow?", "message": "test"}),
+    )
+
+    response = await handle_notify_confirmation(request)
+
+    assert response.status == 503
+    assert json.loads(response.text)["ok"] is False
 
 
 # ---------------------------------------------------------------------------

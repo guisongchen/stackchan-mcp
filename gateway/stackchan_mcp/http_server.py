@@ -10,6 +10,7 @@ import os
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -19,7 +20,7 @@ from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.types import CallToolRequest, CallToolResult, ErrorData, ServerResult, TextContent
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from starlette.routing import Route
 from starlette.types import Receive, Scope, Send
 
@@ -45,6 +46,23 @@ SERVER_SHUTDOWN_ERROR_CODE = -32000
 SERVER_SHUTDOWN_ERROR_MESSAGE = "stackchan MCP HTTP server is shutting down"
 
 DispatchFn = Callable[[QueueItem], Awaitable[list[TextContent]]]
+
+# ---------------------------------------------------------------------------
+# Dashboard HTML (loaded once at import time)
+# ---------------------------------------------------------------------------
+
+_DASHBOARD_PATH = Path(__file__).parent / "dashboard.html"
+
+
+def _load_dashboard_html() -> str | None:
+    if _DASHBOARD_PATH.is_file():
+        return _DASHBOARD_PATH.read_text()
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Config helpers
+# ---------------------------------------------------------------------------
 
 
 def get_configured_token() -> str | None:
@@ -91,6 +109,351 @@ def make_dispatch_fn(gateway: Any) -> DispatchFn:
     return dispatch
 
 
+# ---------------------------------------------------------------------------
+# API helper: call ESP32 tool + extract clean JSON response
+# ---------------------------------------------------------------------------
+
+
+async def _extract_result_text(
+    gateway: Any, esp32_name: str, esp32_args: dict[str, Any]
+) -> JSONResponse:
+    """Call an ESP32 tool and extract text content into a clean API response."""
+    if not gateway.esp32.device_connected:
+        return JSONResponse(
+            {"ok": False, "error": "No ESP32 device connected"}, status_code=503
+        )
+    result, error = await gateway.esp32.call_tool(esp32_name, esp32_args)
+    if error:
+        return JSONResponse(
+            {"ok": False, "error": error.get("message", str(error))}, status_code=500
+        )
+    text = _parse_tool_result_text(result)
+    return JSONResponse({"ok": True, "data": text})
+
+
+async def _safe_json_body(request: Request) -> dict[str, Any] | None:
+    """Parse JSON request body safely, returning None on failure."""
+    try:
+        return await request.json()
+    except Exception:
+        return None
+
+
+def _parse_tool_result_text(result: Any) -> Any:
+    """Extract user-facing text from an MCP tool call result dict.
+
+    The ESP32 returns JSON-RPC results like
+    ``{"content": [{"type": "text", "text": "..."}]}``.
+    This function attempts to parse the inner text as JSON;
+    if that fails, it returns the raw text string.
+    """
+    if not isinstance(result, dict) or "content" not in result:
+        return result
+    content = result["content"]
+    if isinstance(content, list) and content:
+        item = content[0]
+        if isinstance(item, dict) and item.get("type") == "text":
+            text = item.get("text", "")
+            try:
+                return json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                return text
+    return result
+
+
+def _get_gateway(request: Request) -> Any:
+    return request.app.state.gateway
+
+
+# ---------------------------------------------------------------------------
+# Dashboard / API route handlers
+# ---------------------------------------------------------------------------
+
+
+async def api_device_info(request: Request) -> JSONResponse:
+    return await _extract_result_text(_get_gateway(request), "self.get_device_status", {})
+
+
+async def api_brightness(request: Request) -> JSONResponse:
+    body = await _safe_json_body(request)
+    if body is None:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+    brightness = body.get("brightness")
+    if not isinstance(brightness, int) or brightness < 0 or brightness > 100:
+        return JSONResponse(
+            {"ok": False, "error": "brightness must be an integer 0-100"}, status_code=400
+        )
+    return await _extract_result_text(
+        _get_gateway(request), "self.screen.set_brightness", {"brightness": brightness}
+    )
+
+
+async def api_volume(request: Request) -> JSONResponse:
+    body = await _safe_json_body(request)
+    if body is None:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+    volume = body.get("volume")
+    if not isinstance(volume, int) or volume < 0 or volume > 100:
+        return JSONResponse(
+            {"ok": False, "error": "volume must be an integer 0-100"}, status_code=400
+        )
+    return await _extract_result_text(
+        _get_gateway(request), "self.audio_speaker.set_volume", {"volume": volume}
+    )
+
+
+async def api_avatar(request: Request) -> JSONResponse:
+    body = await _safe_json_body(request)
+    if body is None:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+    face = body.get("face", "")
+    valid = {"idle", "happy", "thinking", "sad", "surprised", "embarrassed", "off"}
+    if face not in valid:
+        return JSONResponse(
+            {"ok": False, "error": f"face must be one of: {', '.join(sorted(valid))}"},
+            status_code=400,
+        )
+    return await _extract_result_text(
+        _get_gateway(request), "self.display.set_avatar", {"face": face}
+    )
+
+
+async def api_head_angles_get(request: Request) -> JSONResponse:
+    return await _extract_result_text(_get_gateway(request), "self.robot.get_head_angles", {})
+
+
+async def api_head_angles_post(request: Request) -> JSONResponse:
+    body = await _safe_json_body(request)
+    if body is None:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+    yaw = body.get("yaw")
+    pitch = body.get("pitch")
+    speed = body.get("speed", "mid")
+    if not isinstance(yaw, int) or yaw < -90 or yaw > 90:
+        return JSONResponse(
+            {"ok": False, "error": "yaw must be an integer -90..90"}, status_code=400
+        )
+    if not isinstance(pitch, int) or pitch < 5 or pitch > 85:
+        return JSONResponse(
+            {"ok": False, "error": "pitch must be an integer 5..85"}, status_code=400
+        )
+    args: dict[str, Any] = {"yaw": yaw, "pitch": pitch}
+    if isinstance(speed, int) and 1 <= speed <= 10000:
+        args["speed"] = speed
+    elif isinstance(speed, str) and speed in ("low", "mid", "high"):
+        args["speed"] = speed
+    return await _extract_result_text(
+        _get_gateway(request), "self.robot.set_head_angles", args
+    )
+
+
+async def api_leds_all(request: Request) -> JSONResponse:
+    body = await _safe_json_body(request)
+    if body is None:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+    r = body.get("r", 0)
+    g = body.get("g", 0)
+    b = body.get("b", 0)
+    for v in (r, g, b):
+        if not isinstance(v, int) or v < 0 or v > 255:
+            return JSONResponse(
+                {"ok": False, "error": "r, g, b must be integers 0-255"}, status_code=400
+            )
+    return await _extract_result_text(
+        _get_gateway(request), "self.led.set_all", {"r": r, "g": g, "b": b}
+    )
+
+
+async def api_leds_clear(request: Request) -> JSONResponse:
+    return await _extract_result_text(_get_gateway(request), "self.led.clear", {})
+
+
+async def api_leds_set(request: Request) -> JSONResponse:
+    body = await _safe_json_body(request)
+    if body is None:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+    colors = body.get("colors")
+    if not isinstance(colors, list):
+        return JSONResponse(
+            {"ok": False, "error": "colors must be an array of [r,g,b] triples"},
+            status_code=400,
+        )
+    return await _extract_result_text(
+        _get_gateway(request), "self.led.set_many", {"colors": json.dumps(colors)}
+    )
+
+
+async def api_torque_get(request: Request) -> JSONResponse:
+    return await _extract_result_text(
+        _get_gateway(request), "self.robot.check_vm_en", {}
+    )
+
+
+async def api_torque_post(request: Request) -> JSONResponse:
+    body = await _safe_json_body(request)
+    if body is None:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+    yaw_enabled = body.get("yaw_enabled")
+    pitch_enabled = body.get("pitch_enabled")
+    if not isinstance(yaw_enabled, bool) or not isinstance(pitch_enabled, bool):
+        return JSONResponse(
+            {"ok": False, "error": "yaw_enabled and pitch_enabled must be booleans"},
+            status_code=400,
+        )
+    return await _extract_result_text(
+        _get_gateway(request),
+        "self.robot.set_servo_torque",
+        {"yaw_enabled": yaw_enabled, "pitch_enabled": pitch_enabled},
+    )
+
+
+async def api_auto_torque_release_post(request: Request) -> JSONResponse:
+    body = await _safe_json_body(request)
+    if body is None:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+    enabled = body.get("enabled")
+    timeout_ms = body.get("timeout_ms", 5000)
+    if not isinstance(enabled, bool):
+        return JSONResponse(
+            {"ok": False, "error": "enabled must be a boolean"}, status_code=400
+        )
+    if not isinstance(timeout_ms, int) or timeout_ms < 500 or timeout_ms > 600000:
+        return JSONResponse(
+            {"ok": False, "error": "timeout_ms must be 500..600000"}, status_code=400
+        )
+    return await _extract_result_text(
+        _get_gateway(request),
+        "self.robot.set_auto_torque_release",
+        {"enabled": enabled, "timeout_ms": timeout_ms},
+    )
+
+
+async def api_touch_get(request: Request) -> JSONResponse:
+    return await _extract_result_text(_get_gateway(request), "self.touch.get_touch_state", {})
+
+
+async def api_touch_enabled_get(request: Request) -> JSONResponse:
+    return await _extract_result_text(
+        _get_gateway(request), "self.robot.get_touch_sensor_enabled", {}
+    )
+
+
+async def api_touch_enabled_post(request: Request) -> JSONResponse:
+    body = await _safe_json_body(request)
+    if body is None:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+    enabled = body.get("enabled")
+    if not isinstance(enabled, bool):
+        return JSONResponse(
+            {"ok": False, "error": "enabled must be a boolean"}, status_code=400
+        )
+    return await _extract_result_text(
+        _get_gateway(request), "self.robot.set_touch_sensor_enabled", {"enabled": enabled}
+    )
+
+
+async def api_blink(request: Request) -> JSONResponse:
+    body = await _safe_json_body(request)
+    if body is None:
+        return JSONResponse({"ok": False, "error": "Invalid JSON body"}, status_code=400)
+    enabled = body.get("enabled")
+    if not isinstance(enabled, bool):
+        return JSONResponse(
+            {"ok": False, "error": "enabled must be a boolean"}, status_code=400
+        )
+    return await _extract_result_text(
+        _get_gateway(request), "self.display.set_blink", {"enabled": enabled}
+    )
+
+
+async def dashboard_handler(_request: Request) -> HTMLResponse:
+    html = _load_dashboard_html()
+    if html is None:
+        return HTMLResponse(
+            "<h1>Dashboard not found</h1>"
+            "<p>dashboard.html is missing from the gateway package.</p>",
+            status_code=404,
+        )
+    return HTMLResponse(
+        html,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Shared dashboard routes
+# ---------------------------------------------------------------------------
+
+
+def _dashboard_routes() -> list[Route]:
+    return [
+        Route("/api/device-info", endpoint=api_device_info, methods=["GET"]),
+        Route("/api/brightness", endpoint=api_brightness, methods=["POST"]),
+        Route("/api/volume", endpoint=api_volume, methods=["POST"]),
+        Route("/api/avatar", endpoint=api_avatar, methods=["POST"]),
+        Route("/api/head-angles", endpoint=api_head_angles_get, methods=["GET"]),
+        Route("/api/head-angles", endpoint=api_head_angles_post, methods=["POST"]),
+        Route("/api/leds/all", endpoint=api_leds_all, methods=["POST"]),
+        Route("/api/leds/clear", endpoint=api_leds_clear, methods=["POST"]),
+        Route("/api/leds", endpoint=api_leds_set, methods=["POST"]),
+        Route("/api/touch", endpoint=api_touch_get, methods=["GET"]),
+        Route("/api/touch/enabled", endpoint=api_touch_enabled_get, methods=["GET"]),
+        Route("/api/touch/enabled", endpoint=api_touch_enabled_post, methods=["POST"]),
+        Route("/api/torque", endpoint=api_torque_get, methods=["GET"]),
+        Route("/api/torque", endpoint=api_torque_post, methods=["POST"]),
+        Route("/api/torque/auto-release", endpoint=api_auto_torque_release_post, methods=["POST"]),
+        Route("/api/blink", endpoint=api_blink, methods=["POST"]),
+        Route("/", endpoint=dashboard_handler, methods=["GET"]),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# build_dashboard_app: for stdio mode (no MCP endpoint, no queue)
+# ---------------------------------------------------------------------------
+
+
+def build_dashboard_app(
+    *,
+    gateway: Any,
+    host: str,
+    port: int,
+    token: str | None = None,
+) -> _GuardedASGIApp:
+    """Build a Starlette app with dashboard + API routes (stdio mode).
+
+    This is a lightweight variant of ``build_app`` that omits the MCP
+    Streamable HTTP transport endpoint and command queue.  It is used
+    when the MCP protocol runs over stdio and the HTTP server only needs
+    to serve the web dashboard and REST API.
+    """
+    dashboard = _load_dashboard_html()
+
+    async def healthz(_request: Request) -> JSONResponse:
+        return JSONResponse({"ok": True})
+
+    routes: list[Route] = [
+        Route("/healthz", endpoint=healthz, methods=["GET"]),
+        *_dashboard_routes(),
+    ]
+    app = Starlette(routes=routes)
+    app.state.gateway = gateway
+    app.state.dashboard_html = dashboard
+    return _GuardedASGIApp(
+        app,
+        token=token,
+        allowed_hosts=_allowed_host_values(host, port),
+    )
+
+
+# ---------------------------------------------------------------------------
+# build_app: full Streamable HTTP MCP + dashboard
+# ---------------------------------------------------------------------------
+
+
 def build_app(
     queue: CommandQueue,
     *,
@@ -116,9 +479,6 @@ def build_app(
         gateway=gateway,
         pending_items=pending_items,
     )
-
-    async def healthz(_request: Request) -> JSONResponse:
-        return JSONResponse({"ok": True})
 
     async def status(_request: Request) -> JSONResponse:
         raw_status = gateway.esp32.get_status()
@@ -154,6 +514,9 @@ def build_app(
                 _complete_pending_items_for_shutdown(pending_items)
                 _drain_queued_items_for_shutdown(queue)
 
+    async def healthz(_request: Request) -> JSONResponse:
+        return JSONResponse({"ok": True})
+
     routes = [
         Route(
             "/mcp",
@@ -162,6 +525,7 @@ def build_app(
         ),
         Route("/healthz", endpoint=healthz, methods=["GET"]),
         Route("/status", endpoint=status, methods=["GET"]),
+        *_dashboard_routes(),
     ]
     app = Starlette(routes=routes, lifespan=lifespan)
     app.state.command_queue = queue
@@ -172,6 +536,11 @@ def build_app(
         token=token,
         allowed_hosts=_allowed_host_values(host, port),
     )
+
+
+# ---------------------------------------------------------------------------
+# Queue tool handler (streamable-http only)
+# ---------------------------------------------------------------------------
 
 
 def _install_queue_tool_handler(
@@ -339,6 +708,11 @@ def _is_allowed_origin(value: str | None, allowed_hosts: set[str]) -> bool:
     return _is_allowed_host_header(parsed.netloc, allowed_hosts)
 
 
+# ---------------------------------------------------------------------------
+# Auth-guarded ASGI middleware
+# ---------------------------------------------------------------------------
+
+
 class _GuardedASGIApp:
     def __init__(
         self,
@@ -372,7 +746,10 @@ class _GuardedASGIApp:
                 send,
             )
             return
-        if self._token and scope.get("path") in {"/mcp", "/status"}:
+        path = scope.get("path", "")
+        if self._token and (
+            path in {"/mcp", "/status"} or path.startswith("/api/")
+        ):
             expected = f"Bearer {self._token}"
             if request.headers.get("authorization") != expected:
                 await PlainTextResponse(

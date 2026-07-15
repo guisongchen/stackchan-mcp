@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StackChan Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #1a1a2e; --card: #16213e; --accent: #0f3460;
+    --text: #e0e0e0; --muted: #8892b0; --green: #00d2a0; --red: #ff4757;
+    --cyan: #00d4ff; --orange: #ffa502; --purple: #a55eea;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  header { background: var(--card); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--accent); }
+  header h1 { font-size: 1.2rem; }
+  .status-led { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+  .status-led.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-led.offline { background: var(--red); }
+  .main { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; padding: 16px; max-width: 1200px; margin: 0 auto; }
+  .card { background: var(--card); border-radius: 10px; padding: 16px; border: 1px solid var(--accent); }
+  .card h2 { font-size: 0.95rem; color: var(--cyan); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .row label { min-width: 70px; font-size: 0.85rem; color: var(--muted); }
+  .row .val { font-size: 0.85rem; color: var(--text); min-width: 30px; text-align: right; }
+  input[type=range] { flex: 1; -webkit-appearance: none; height: 6px; background: var(--accent); border-radius: 3px; outline: none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--cyan); cursor: pointer; }
+  input[type=color] { width: 36px; height: 36px; border: 2px solid var(--accent); border-radius: 6px; cursor: pointer; padding: 2px; background: transparent; }
+  select { background: var(--accent); color: var(--text); border: 1px solid var(--accent); border-radius: 6px; padding: 6px 10px; font-size: 0.85rem; cursor: pointer; flex: 1; }
+  button { background: var(--accent); color: var(--text); border: none; border-radius: 6px; padding: 8px 16px; font-size: 0.85rem; cursor: pointer; transition: background 0.2s; }
+  button:hover { background: #1a4a80; }
+  button.primary { background: var(--cyan); color: #000; font-weight: 600; }
+  button.primary:hover { background: #00b8e6; }
+  button.danger { background: var(--red); }
+  button.danger:hover { background: #e04040; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .info-item { font-size: 0.8rem; color: var(--muted); }
+  .info-item span { color: var(--text); }
+  .led-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-bottom: 10px; }
+  .led-cell { width: 100%; aspect-ratio: 1; border-radius: 4px; cursor: pointer; border: 2px solid transparent; transition: border 0.15s; }
+  .led-cell:hover { border-color: #fff; }
+  .led-cell.selected { border-color: var(--cyan); }
+  .btn-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .toggle { position: relative; display: inline-block; width: 44px; height: 24px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--accent); border-radius: 24px; transition: .3s; }
+  .toggle .slider::before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .3s; }
+  .toggle input:checked + .slider { background: var(--green); }
+  .toggle input:checked + .slider::before { transform: translateX(20px); }
+  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--green); color: #000; padding: 10px 20px; border-radius: 8px; font-size: 0.85rem; z-index: 999; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .toast.error { background: var(--red); color: #fff; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="status-led offline" id="statusLed"></span>StackChan</h1>
+  <span style="font-size:0.8rem;color:var(--muted)" id="connLabel">检查连接...</span>
+</header>
+<div class="main">
+
+  <!-- Device Info -->
+  <div class="card">
+    <h2>设备状态</h2>
+    <div class="info-grid">
+      <div class="info-item">电量: <span id="d_battery">--</span></div>
+      <div class="info-item">网络: <span id="d_network">--</span></div>
+      <div class="info-item">音量: <span id="d_vol">--</span></div>
+      <div class="info-item">亮度: <span id="d_br">--</span></div>
+    </div>
+  </div>
+
+  <!-- Brightness -->
+  <div class="card">
+    <h2>屏幕亮度</h2>
+    <div class="row">
+      <label>亮度</label>
+      <input type="range" id="brightnessSlider" min="0" max="100" value="0">
+      <span class="val" id="brightnessVal">--</span>
+    </div>
+    <button class="primary" id="btnBrightness">设置</button>
+  </div>
+
+  <!-- Volume -->
+  <div class="card">
+    <h2>音量</h2>
+    <div class="row">
+      <label>音量</label>
+      <input type="range" id="volumeSlider" min="0" max="100" value="0">
+      <span class="val" id="volumeVal">--</span>
+    </div>
+    <button class="primary" id="btnVolume">设置</button>
+  </div>
+
+  <!-- Avatar -->
+  <div class="card">
+    <h2>表情</h2>
+    <div class="row">
+      <label>表情</label>
+      <select id="avatarSelect">
+        <option value="idle">idle</option>
+        <option value="happy">happy</option>
+        <option value="thinking">thinking</option>
+        <option value="sad">sad</option>
+        <option value="surprised">surprised</option>
+        <option value="embarrassed">embarrassed</option>
+        <option value="off">off</option>
+      </select>
+    </div>
+    <button class="primary" id="btnAvatar">设置</button>
+  </div>
+
+  <!-- Head Angles -->
+  <div class="card">
+    <h2>头部角度</h2>
+    <div id="servoStatus" style="font-size:0.8rem;margin-bottom:8px;color:var(--muted)">检查中...</div>
+    <div class="row">
+      <label>Yaw</label>
+      <input type="range" id="yawSlider" min="-90" max="90" value="0">
+      <span class="val" id="yawVal">--</span>
+    </div>
+    <div class="row">
+      <label>Pitch</label>
+      <input type="range" id="pitchSlider" min="5" max="85" value="45">
+      <span class="val" id="pitchVal">--</span>
+    </div>
+    <div class="row">
+      <label>速度</label>
+      <select id="speedSelect">
+        <option value="low">low</option>
+        <option value="mid" selected>mid</option>
+        <option value="high">high</option>
+      </select>
+    </div>
+    <button class="primary" id="btnHead">移动</button>
+  </div>
+
+  <!-- LEDs -->
+  <div class="card">
+    <h2>LED 灯环</h2>
+    <div class="row" style="margin-bottom:8px">
+      <label>颜色</label>
+      <input type="color" id="ledColor" value="#00d4ff">
+      <button id="btnLedAll">全部设置</button>
+    </div>
+    <div id="ledGrid" class="led-grid"></div>
+    <div class="btn-row">
+      <button class="danger" id="btnLedClear">全部关闭</button>
+    </div>
+  </div>
+
+  <!-- Touch, Torque, Blink -->
+  <div class="card">
+    <h2>传感器/舵机/眨眼</h2>
+    <div class="row">
+      <label>舵机扭矩</label>
+      <label class="toggle">
+        <input type="checkbox" id="torqueToggle">
+        <span class="slider"></span>
+      </label>
+      <button id="btnTorque" style="font-size:0.75rem;padding:4px 10px">手动</button>
+    </div>
+    <div class="row">
+      <label>释放超时</label>
+      <select id="autoReleaseTimeout">
+        <option value="5000" selected>5秒</option>
+        <option value="10000">10秒</option>
+        <option value="30000">30秒</option>
+        <option value="60000">60秒</option>
+        <option value="300000">5分钟</option>
+      </select>
+      <button id="btnAutoRelease" style="font-size:0.75rem;padding:4px 10px">应用</button>
+    </div>
+    <div class="row">
+      <label>触摸检测</label>
+      <label class="toggle">
+        <input type="checkbox" id="touchToggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="row">
+      <label>自动眨眼</label>
+      <label class="toggle">
+        <input type="checkbox" id="blinkToggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function() {
+  'use strict';
+
+  var selectedLed = 0;
+  var ledColors = [];
+  for (var i = 0; i < 12; i++) { ledColors.push([0, 212, 255]); }
+  var touchEnabled = false;
+
+  // --- API helper ---
+  function callApi(method, path, body, cb) {
+    var xhr = new XMLHttpRequest();
+    xhr.open(method, path, true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState === 4) {
+        var data = null;
+        try { data = JSON.parse(xhr.responseText); } catch(e) {}
+        cb(data || { ok: false, error: 'Parse error' });
+      }
+    };
+    xhr.onerror = function() {
+      cb({ ok: false, error: 'Network error' });
+    };
+    if (body) {
+      xhr.send(JSON.stringify(body));
+    } else {
+      xhr.send();
+    }
+  }
+
+  function showToast(msg, isError) {
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast show' + (isError ? ' error' : '');
+    setTimeout(function() { el.className = 'toast'; }, 2000);
+  }
+
+  // --- LED grid ---
+  function rgbToHex(c) {
+    return '#' + [c[0].toString(16).padStart(2, '0'), c[1].toString(16).padStart(2, '0'), c[2].toString(16).padStart(2, '0')].join('');
+  }
+
+  function buildLedGrid() {
+    var grid = document.getElementById('ledGrid');
+    grid.innerHTML = '';
+    for (var i = 0; i < 12; i++) {
+      var cell = document.createElement('div');
+      cell.className = 'led-cell' + (i === selectedLed ? ' selected' : '');
+      cell.style.background = 'rgb(' + ledColors[i][0] + ',' + ledColors[i][1] + ',' + ledColors[i][2] + ')';
+      cell.title = 'LED ' + i;
+      (function(idx) {
+        cell.onclick = function() {
+          selectedLed = idx;
+          document.getElementById('ledColor').value = rgbToHex(ledColors[idx]);
+          buildLedGrid();
+        };
+      })(i);
+      grid.appendChild(cell);
+    }
+  }
+
+  document.getElementById('ledColor').addEventListener('input', function() {
+    var hex = this.value;
+    ledColors[selectedLed] = [
+      parseInt(hex.slice(1,3), 16),
+      parseInt(hex.slice(3,5), 16),
+      parseInt(hex.slice(5,7), 16)
+    ];
+    buildLedGrid();
+  });
+
+  document.getElementById('btnLedAll').addEventListener('click', function() {
+    var hex = document.getElementById('ledColor').value;
+    var r = parseInt(hex.slice(1,3), 16);
+    var g = parseInt(hex.slice(3,5), 16);
+    var b = parseInt(hex.slice(5,7), 16);
+    for (var i = 0; i < 12; i++) { ledColors[i] = [r, g, b]; }
+    buildLedGrid();
+    callApi('POST', '/api/leds/all', { r: r, g: g, b: b }, function(data) {
+      showToast(data.ok ? 'LED 已更新' : (data.error || 'Error'), !data.ok);
+    });
+  });
+
+  document.getElementById('btnLedClear').addEventListener('click', function() {
+    for (var i = 0; i < 12; i++) { ledColors[i] = [0, 0, 0]; }
+    buildLedGrid();
+    callApi('POST', '/api/leds/clear', null, function(data) {
+      showToast(data.ok ? 'LED 已关闭' : (data.error || 'Error'), !data.ok);
+    });
+  });
+
+  // --- sliders ---
+  document.getElementById('brightnessSlider').addEventListener('input', function() {
+    document.getElementById('brightnessVal').textContent = this.value;
+  });
+  document.getElementById('volumeSlider').addEventListener('input', function() {
+    document.getElementById('volumeVal').textContent = this.value;
+  });
+  document.getElementById('yawSlider').addEventListener('input', function() {
+    document.getElementById('yawVal').textContent = this.value;
+  });
+  document.getElementById('pitchSlider').addEventListener('input', function() {
+    document.getElementById('pitchVal').textContent = this.value;
+  });
+
+  // --- buttons ---
+  document.getElementById('btnBrightness').addEventListener('click', function() {
+    var v = parseInt(document.getElementById('brightnessSlider').value);
+    callApi('POST', '/api/brightness', { brightness: v }, function(data) {
+      showToast(data.ok ? '亮度设为 ' + v : (data.error || 'Error'), !data.ok);
+    });
+  });
+
+  document.getElementById('btnVolume').addEventListener('click', function() {
+    var v = parseInt(document.getElementById('volumeSlider').value);
+    callApi('POST', '/api/volume', { volume: v }, function(data) {
+      showToast(data.ok ? '音量设为 ' + v : (data.error || 'Error'), !data.ok);
+    });
+  });
+
+  document.getElementById('btnAvatar').addEventListener('click', function() {
+    var face = document.getElementById('avatarSelect').value;
+    callApi('POST', '/api/avatar', { face: face }, function(data) {
+      showToast(data.ok ? '表情设为 ' + face : (data.error || 'Error'), !data.ok);
+    });
+  });
+
+  document.getElementById('btnHead').addEventListener('click', function() {
+    var yaw = parseInt(document.getElementById('yawSlider').value);
+    var pitch = parseInt(document.getElementById('pitchSlider').value);
+    var speed = document.getElementById('speedSelect').value;
+    // Always enable torque before moving
+    callApi('POST', '/api/torque', { yaw_enabled: true, pitch_enabled: true }, function(tr) {
+      callApi('POST', '/api/head-angles', { yaw: yaw, pitch: pitch, speed: speed }, function(data) {
+        if (data.ok) {
+          document.getElementById('torqueToggle').checked = true;
+        }
+        showToast(data.ok ? '头部: yaw=' + yaw + ' pitch=' + pitch : (data.error || 'Error'), !data.ok);
+      });
+    });
+  });
+
+  document.getElementById('touchToggle').addEventListener('change', function() {
+    var enabled = this.checked;
+    callApi('POST', '/api/touch/enabled', { enabled: enabled }, function(data) {
+      showToast(data.ok ? null : (data.error || 'Error'), !!(!data.ok));
+    });
+  });
+
+  document.getElementById('blinkToggle').addEventListener('change', function() {
+    var enabled = this.checked;
+    callApi('POST', '/api/blink', { enabled: enabled }, function(data) {
+      showToast(data.ok ? null : (data.error || 'Error'), !!(!data.ok));
+    });
+  });
+
+  document.getElementById('torqueToggle').addEventListener('change', function() {
+    var enabled = this.checked;
+    callApi('POST', '/api/torque', { yaw_enabled: enabled, pitch_enabled: enabled }, function(data) {
+      showToast(data.ok ? (enabled ? '舵机扭矩已开启' : '舵机扭矩已释放') : (data.error || 'Error'), !data.ok);
+    });
+  });
+
+  document.getElementById('btnTorque').addEventListener('click', function() {
+    callApi('POST', '/api/torque', { yaw_enabled: true, pitch_enabled: true }, function(data) {
+      if (data.ok) {
+        document.getElementById('torqueToggle').checked = true;
+        showToast('舵机扭矩已手动启用');
+      } else {
+        showToast(data.error || 'Error', true);
+      }
+    });
+  });
+
+  document.getElementById('btnAutoRelease').addEventListener('click', function() {
+    var timeoutMs = parseInt(document.getElementById('autoReleaseTimeout').value);
+    callApi('POST', '/api/torque/auto-release', { enabled: true, timeout_ms: timeoutMs }, function(data) {
+      showToast(data.ok ? '释放超时已设为 ' + (timeoutMs/1000) + ' 秒' : (data.error || 'Error'), !data.ok);
+    });
+  });
+
+  // --- sync from device ---
+  function updateDeviceInfo(data) {
+    if (!data) return;
+    var battery = data.battery || {};
+    var net = data.network || {};
+    var audio = data.audio_speaker || {};
+    var screen = data.screen || {};
+    document.getElementById('d_battery').textContent = (battery.level != null ? battery.level : '--') + '%' + (battery.charging ? ' (充电中)' : '');
+    document.getElementById('d_network').textContent = (net.ssid || '--') + ' ' + (net.signal || '');
+    document.getElementById('d_vol').textContent = audio.volume != null ? audio.volume : '--';
+    document.getElementById('d_br').textContent = screen.brightness != null ? screen.brightness : '--';
+    if (audio.volume != null) {
+      document.getElementById('volumeSlider').value = audio.volume;
+      document.getElementById('volumeVal').textContent = audio.volume;
+    }
+    if (screen.brightness != null) {
+      document.getElementById('brightnessSlider').value = screen.brightness;
+      document.getElementById('brightnessVal').textContent = screen.brightness;
+    }
+  }
+
+  function updateHeadAngles(data) {
+    if (!data) return;
+    if (data.yaw != null) {
+      document.getElementById('yawSlider').value = data.yaw;
+      document.getElementById('yawVal').textContent = data.yaw;
+    }
+    if (data.pitch != null) {
+      document.getElementById('pitchSlider').value = data.pitch;
+      document.getElementById('pitchVal').textContent = data.pitch;
+    }
+  }
+
+  function initState() {
+    // Fetch device-info
+    callApi('GET', '/api/device-info', null, function(di) {
+      if (di.ok && di.data) {
+        document.getElementById('statusLed').className = 'status-led online';
+        document.getElementById('connLabel').textContent = '已连接';
+        updateDeviceInfo(di.data);
+      }
+    });
+
+    // Fetch head angles
+    callApi('GET', '/api/head-angles', null, function(head) {
+      var status = document.getElementById('servoStatus');
+      if (head.ok && head.data) {
+        if (head.data.yaw != null && head.data.pitch != null) {
+          updateHeadAngles(head.data);
+          status.innerHTML = '<span style="color:var(--green)">正常</span> yaw=' + head.data.yaw + ' pitch=' + head.data.pitch;
+        } else if (head.data.error) {
+          status.innerHTML = '<span style="color:var(--orange)">无响应</span> ' + head.data.error +
+            ' <span style="font-size:0.75rem">（扭矩可能已释放或总线卡死，尝试手动启用扭矩；若持续无响应需 PMIC 断电重启）</span>';
+        } else {
+          status.innerHTML = '<span style="color:var(--orange)">无响应</span>';
+        }
+      }
+    });
+
+    // Fetch touch enabled
+    callApi('GET', '/api/touch/enabled', null, function(te) {
+      if (te.ok && te.data) {
+        document.getElementById('touchToggle').checked = !!te.data.enabled;
+        touchEnabled = !!te.data.enabled;
+      }
+    });
+
+    // Fetch torque state
+    callApi('GET', '/api/torque', null, function(tq) {
+      if (tq.ok && tq.data) {
+        document.getElementById('torqueToggle').checked = !!(tq.data.vm_en);
+      }
+    });
+  }
+
+  function pollStatus() {
+    callApi('GET', '/api/device-info', null, function(di) {
+      if (di.ok && di.data) {
+        document.getElementById('statusLed').className = 'status-led online';
+        document.getElementById('connLabel').textContent = '已连接';
+        updateDeviceInfo(di.data);
+      } else {
+        document.getElementById('statusLed').className = 'status-led offline';
+        document.getElementById('connLabel').textContent = '未连接';
+      }
+    });
+    // Also check servo health
+    callApi('GET', '/api/head-angles', null, function(head) {
+      var status = document.getElementById('servoStatus');
+      if (!head.ok) {
+        status.innerHTML = '<span style="color:var(--red)">通信异常</span>';
+      } else if (head.data && head.data.yaw != null && head.data.pitch != null) {
+        status.innerHTML = '<span style="color:var(--green)">正常</span> yaw=' + head.data.yaw + ' pitch=' + head.data.pitch;
+      } else if (head.data && head.data.error) {
+        status.innerHTML = '<span style="color:var(--orange)">无响应</span> ' + head.data.error +
+          ' <span style="font-size:0.75rem">（扭矩可能已释放或总线卡死，尝试手动启用扭矩；若持续无响应需 PMIC 断电重启）</span>';
+      } else {
+        status.innerHTML = '<span style="color:var(--orange)">无响应</span>';
+      }
+    });
+  }
+
+  // --- boot ---
+  buildLedGrid();
+  initState();
+  setInterval(pollStatus, 3000);
+})();
+</script>
+</body>
+</html>

@@ -705,9 +705,11 @@ def _run_preflight() -> int:
 async def _run(*, advertise_mdns: bool = True) -> None:
     """Start both the ESP32 WebSocket server and the stdio MCP server."""
     import signal
+    import uvicorn
 
     from .event_log import rotate_old_entries
     from .gateway import get_gateway
+    from .http_server import build_dashboard_app
     from .notify_config import load_notify_config
     from .stdio_server import run_stdio_server
 
@@ -728,14 +730,31 @@ async def _run(*, advertise_mdns: bool = True) -> None:
     if sys.platform != "win32":
         loop.add_signal_handler(signal.SIGTERM, _handle_sigterm)
 
-    # Prune stale stackchan-event log entries only when the JSONL path is
-    # explicitly enabled. With the default all-OFF notify config, gateway
-    # startup must not create or rewrite any persistent event-log files.
     if notify_config.jsonl_enabled:
         rotate_old_entries(path=notify_config.jsonl_path)
 
     await gateway.start(advertise_mdns=advertise_mdns)
     logger.info("Gateway started, waiting for ESP32 connections...")
+
+    # Start dashboard HTTP server (same port as streamable-http mode)
+    dash_host, dash_port = _resolve_mcp_http_endpoint()
+    token = os.getenv("STACKCHAN_TOKEN") or os.getenv("BEARER_TOKEN") or None
+    dash_app = build_dashboard_app(
+        gateway=gateway,
+        host=dash_host,
+        port=dash_port,
+        token=token,
+    )
+    dash_config = uvicorn.Config(
+        dash_app,
+        host=dash_host,
+        port=dash_port,
+        log_level="info",
+        lifespan="off",
+    )
+    dash_server = uvicorn.Server(dash_config)
+    dash_task = asyncio.create_task(dash_server.serve())
+    logger.info("Dashboard server started on http://%s:%d", dash_host, dash_port)
 
     try:
         # Run stdio MCP server (blocks until MCP client disconnects)
@@ -743,6 +762,12 @@ async def _run(*, advertise_mdns: bool = True) -> None:
     except asyncio.CancelledError:
         logger.info("Received termination signal, shutting down...")
     finally:
+        dash_server.should_exit = True
+        dash_task.cancel()
+        try:
+            await dash_task
+        except asyncio.CancelledError:
+            pass
         await gateway.stop()
 
 

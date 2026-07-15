@@ -63,18 +63,19 @@ static inline bool ServoWritePosOk(int r) { return r > 0; }
 
 class Pmic : public Axp2101 {
 public:
-    // Power Init
+    // Power Init — aligned with M5Unified official CoreS3 configuration
     Pmic(i2c_master_bus_handle_t i2c_bus, uint8_t addr) : Axp2101(i2c_bus, addr) {
-        uint8_t data = ReadReg(0x90);
-        data |= 0b10110100;
-        WriteReg(0x90, data);
-        WriteReg(0x99, (0b11110 - 5));
-        WriteReg(0x97, (0b11110 - 2));
-        WriteReg(0x69, 0b00110101);
-        WriteReg(0x30, 0b111111);
-        WriteReg(0x90, 0xBF);
-        WriteReg(0x94, 33 - 5);
-        WriteReg(0x95, 33 - 5);
+        WriteReg(0x90, 0xBF);         // LDO_ONOFF_CTRL0: enable LDOs
+        WriteReg(0x92, 18 - 5);       // ALDO1 = 1.8V (AW88298 audio amp)
+        WriteReg(0x93, 33 - 5);       // ALDO2 = 3.3V (ES7210 ADC)
+        WriteReg(0x94, 33 - 5);       // ALDO3 = 3.3V (camera)
+        WriteReg(0x95, 33 - 5);       // ALDO4 = 3.3V (TF card)
+        WriteReg(0x97, (0b11110 - 2)); // DLDO2 voltage
+        WriteReg(0x99, (0b11110 - 5)); // DLDO1 voltage (backlight)
+        WriteReg(0x27, 0x00);         // PowerKey Hold=1s / PowerOff=4s
+        WriteReg(0x69, 0x11);         // CHGLED setting
+        WriteReg(0x10, 0x30);         // PMU common: bat-detect + off-discharge
+        WriteReg(0x30, 0x0F);         // ADC enabled
     }
 
     void SetBrightness(uint8_t brightness) {
@@ -107,6 +108,11 @@ public:
         WriteReg(0x11, 0b00010000);  // GCR P0 port is Push-Pull mode.
         WriteReg(0x12, 0b11111111);  // LEDMODE_P0
         WriteReg(0x13, 0b11111111);  // LEDMODE_P1
+    }
+
+    void EnableBoost() {
+        uint8_t reg03 = ReadReg(0x03);
+        WriteReg(0x03, reg03 | 0x80);
     }
 
     void ResetAw88298() {
@@ -2304,6 +2310,7 @@ private:
         ESP_LOGI(TAG, "Init AW9523");
         aw9523_ = new Aw9523(i2c_bus_, 0x58);
         vTaskDelay(pdMS_TO_TICKS(50));
+        aw9523_->EnableBoost();  // SY7088 BOOST_EN (M5Unified CoreS3 reference)
     }
 
     bool EnsureListeningIndicatorObjectLocked() {

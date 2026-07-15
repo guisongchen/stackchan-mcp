@@ -836,6 +836,40 @@ async def _handle_beat_clip_save(arguments: dict[str, Any]) -> list[TextContent]
     return _follow_pose_text({"ok": True, **result})
 
 
+async def _handle_notify_confirmation(
+    arguments: dict[str, Any],
+    gateway: Any,
+) -> list[TextContent]:
+    """Fire-and-forget notification to StackChan.
+
+    Speaks the confirmation title/message on the device and triggers a
+    visual cue. Any failure is swallowed so the terminal prompt is never
+    blocked.
+    """
+    title = arguments.get("title", "")
+    message = arguments.get("message", "")
+    parts = [p for p in (title, message) if isinstance(p, str) and p]
+    if not parts:
+        return [TextContent(type="text", text=json.dumps({"ok": True}))]
+
+    text = " ".join(parts)
+    try:
+        await synthesize_and_send({"text": text}, gateway=gateway)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to speak confirmation notification: %s", exc)
+
+    # Best-effort visual cue; never let an avatar/LED failure break the hook.
+    try:
+        if gateway.esp32.device_connected:
+            await gateway.esp32.call_tool(
+                "self.display.set_avatar", {"face": "thinking"}
+            )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to set avatar for notification: %s", exc)
+
+    return [TextContent(type="text", text=json.dumps({"ok": True}))]
+
+
 async def _dispatch_mcp_tool(
     name: str,
     arguments: dict[str, Any],
@@ -845,6 +879,9 @@ async def _dispatch_mcp_tool(
     if name == "get_status":
         status = gateway.esp32.get_status()
         return [TextContent(type="text", text=json.dumps(status, indent=2))]
+
+    if name == "stackchan_notify_confirmation":
+        return await _handle_notify_confirmation(arguments, gateway)
 
     if name == "say":
         try:
@@ -1233,6 +1270,29 @@ def create_server(notify_config: NotifyConfig | None = None) -> StackChanServer:
                 inputSchema={
                     "type": "object",
                     "properties": {},
+                },
+            ),
+            Tool(
+                name="stackchan_notify_confirmation",
+                description=(
+                    "Notify the user about a confirmation prompt shown in the terminal. "
+                    "Speaks a title and message summary on StackChan and shows a visual "
+                    "cue. This is fire-and-forget: failures are swallowed so the terminal "
+                    "prompt is never blocked."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "title": {
+                            "type": "string",
+                            "description": "Short title of the confirmation prompt",
+                        },
+                        "message": {
+                            "type": "string",
+                            "description": "Summary message to announce",
+                        },
+                    },
+                    "required": ["title", "message"],
                 },
             ),
             Tool(

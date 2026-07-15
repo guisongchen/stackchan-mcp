@@ -70,6 +70,97 @@ async def test_list_tools_includes_get_head_angles():
 
 
 @pytest.mark.asyncio
+async def test_list_tools_includes_notify_confirmation():
+    """stackchan_notify_confirmation is exposed to MCP clients."""
+    server = create_server()
+
+    result = await server.request_handlers[ListToolsRequest](
+        ListToolsRequest(method="tools/list")
+    )
+
+    tool_names = [tool.name for tool in result.root.tools]
+    assert "stackchan_notify_confirmation" in tool_names
+
+
+@pytest.mark.asyncio
+async def test_notify_confirmation_speaks_summary(monkeypatch):
+    """stackchan_notify_confirmation speaks title + message and returns ok."""
+    spoken = []
+    avatar_calls = []
+
+    async def fake_synthesize_and_send(arguments, *, gateway=None, registry=None):
+        spoken.append(arguments.get("text"))
+        return {"ok": True}
+
+    class FakeESP32:
+        device_connected = True
+
+        async def call_tool(self, name, arguments):
+            avatar_calls.append((name, arguments))
+            return {"content": [{"type": "text", "text": "true"}]}, None
+
+    class FakeGateway:
+        esp32 = FakeESP32()
+
+    monkeypatch.setattr(stdio_server, "get_gateway", lambda: FakeGateway())
+    monkeypatch.setattr(stdio_server, "synthesize_and_send", fake_synthesize_and_send)
+    server = create_server()
+
+    result = await server.request_handlers[CallToolRequest](
+        CallToolRequest(
+            method="tools/call",
+            params={
+                "name": "stackchan_notify_confirmation",
+                "arguments": {
+                    "title": "Allow Bash command?",
+                    "message": "rm -rf /tmp/old-builds",
+                },
+            },
+        )
+    )
+
+    assert spoken == ["Allow Bash command? rm -rf /tmp/old-builds"]
+    assert avatar_calls == [("self.display.set_avatar", {"face": "thinking"})]
+    assert json.loads(result.root.content[0].text) == {"ok": True}
+
+
+@pytest.mark.asyncio
+async def test_notify_confirmation_ok_when_device_offline(monkeypatch):
+    """stackchan_notify_confirmation returns ok even if the device is offline."""
+    spoken = []
+
+    async def fake_synthesize_and_send(arguments, *, gateway=None, registry=None):
+        spoken.append(arguments.get("text"))
+        return {"ok": True}
+
+    class FakeESP32:
+        device_connected = False
+
+    class FakeGateway:
+        esp32 = FakeESP32()
+
+    monkeypatch.setattr(stdio_server, "get_gateway", lambda: FakeGateway())
+    monkeypatch.setattr(stdio_server, "synthesize_and_send", fake_synthesize_and_send)
+    server = create_server()
+
+    result = await server.request_handlers[CallToolRequest](
+        CallToolRequest(
+            method="tools/call",
+            params={
+                "name": "stackchan_notify_confirmation",
+                "arguments": {
+                    "title": "Allow edit?",
+                    "message": "Changing src/main.py",
+                },
+            },
+        )
+    )
+
+    assert spoken == ["Allow edit? Changing src/main.py"]
+    assert json.loads(result.root.content[0].text) == {"ok": True}
+
+
+@pytest.mark.asyncio
 async def test_get_head_angles_relays_to_esp32(monkeypatch):
     """get_head_angles maps to the ESP32 self.robot.get_head_angles tool."""
     calls = []

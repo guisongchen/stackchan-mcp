@@ -469,6 +469,8 @@ bool WebsocketProtocol::OpenAudioChannelInternal(bool report_error, bool arm_aud
                     }
                 }
             } else {
+                // Wake the display on any non-binary message (MCP tools, etc.)
+                Board::GetInstance().SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
                 // Parse JSON data
                 auto root = cJSON_ParseWithLength(data, len);
                 auto type = cJSON_GetObjectItem(root, "type");

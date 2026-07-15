@@ -1246,23 +1246,25 @@ bool Application::CanEnterSleepMode() {
         return false;
     }
 
-    // Block sleep while the MCP control transport (e.g. WebSocket) is alive.
-    // After PR #169 the WebSocket is established at boot for persistent MCP
-    // control, decoupled from any audio session — without this check the
-    // legacy PowerSaveTimer would still trip after ~60 s of idle even
-    // though MCP tools remain in use, dropping the transport and forcing a
-    // touch / wake to recover. Subclasses that lack a persistent transport
-    // notion inherit the default `return false;` from Protocol so existing
-    // behavior is unchanged for them.
-    if (protocol_ && protocol_->IsTransportConnected()) {
-        return false;
-    }
+    // PR #169: WebSocket stays connected at all times for MCP control.
+    // The transport check is now only used to block *shutdown* (300 s),
+    // not screen dimming (60 s) — see PowerSaveTimer::PowerSaveCheck.
+    // Screen dimming saves battery while keeping MCP responsive.
 
     if (!audio_service_.IsIdle()) {
         return false;
     }
 
     // Now it is safe to enter sleep mode
+    return true;
+}
+
+bool Application::CanShutdown() {
+    // Block shutdown while the MCP transport is alive so the device
+    // remains reachable via MCP tools indefinitely.
+    if (protocol_ && protocol_->IsTransportConnected()) {
+        return false;
+    }
     return true;
 }
 

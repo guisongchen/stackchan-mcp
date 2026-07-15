@@ -98,7 +98,7 @@ void PowerSaveTimer::PowerSaveCheck() {
             }
         }
     }
-    if (seconds_to_shutdown_ != -1 && ticks_ >= seconds_to_shutdown_ && on_shutdown_request_) {
+    if (seconds_to_shutdown_ != -1 && ticks_ >= seconds_to_shutdown_ && on_shutdown_request_ && app.CanShutdown()) {
         on_shutdown_request_();
     }
 }

@@ -112,6 +112,7 @@ public:
     void WakeWordInvoke(const std::string& wake_word);
     bool UpgradeFirmware(const std::string& url, const std::string& version = "");
     bool CanEnterSleepMode();
+    bool CanShutdown();
     void SendMcpMessage(const std::string& payload);
     void SendStackChanEvent(const char* event_type, const char* subtype, uint64_t duration_ms);
 

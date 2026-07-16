@@ -44,7 +44,7 @@ async def notify_confirmation_on_device(
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to speak confirmation notification: %s", exc)
 
-    # Best-effort visual cue; never let an avatar/LED failure break the hook.
+    # Best-effort visual cue; never let an avatar failure break the hook.
     try:
         if gateway.esp32.device_connected:
             await gateway.esp32.call_tool(

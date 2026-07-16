@@ -1072,14 +1072,6 @@ async def _dispatch_mcp_tool(
             "self.gateway_config.set",
             arguments,
         ),
-        "get_touch_sensor_enabled": (
-            "self.robot.get_touch_sensor_enabled",
-            {},
-        ),
-        "set_touch_sensor_enabled": (
-            "self.robot.set_touch_sensor_enabled",
-            arguments,
-        ),
         "set_avatar": (
             "self.display.set_avatar",
             arguments,
@@ -1096,29 +1088,13 @@ async def _dispatch_mcp_tool(
             "self.display.set_blink",
             arguments,
         ),
-        "set_servo_torque": (
-            "self.robot.set_servo_torque",
-            arguments,
-        ),
-        "set_auto_torque_release": (
-            "self.robot.set_auto_torque_release",
-            arguments,
-        ),
         "get_touch_state": (
             "self.touch.get_touch_state",
             {},
         ),
-        "set_led": (
-            "self.led.set_color",
-            arguments,
-        ),
         "set_all_leds": (
             "self.led.set_all",
             arguments,
-        ),
-        "set_leds": (
-            "self.led.set_many",
-            {"colors": json.dumps(arguments.get("colors", []))},
         ),
         "clear_leds": (
             "self.led.clear",
@@ -1369,270 +1345,11 @@ def create_server(notify_config: NotifyConfig | None = None) -> StackChanServer:
                 },
             ),
             Tool(
-                name="stackchan_follow_pose_stream",
-                description=(
-                    "Subscribes to an arbitrary upstream WebSocket pose-stream "
-                    "using action=start, stop, or status. Sensor yaw is "
-                    "forwarded 1:1 and clamped to +/-90 degrees; sensor "
-                    "pitch is shifted by pitch_center_deg (default 45) so "
-                    "sensor neutral maps to head neutral, then clamped to "
-                    "5..85 degrees. Inputs beyond the head's mechanical range "
-                    "saturate at the limit without scaling. The subscriber "
-                    "applies moving-average smoothing, a downsample cap, and "
-                    "an angular-velocity clamp. Only one subscription is "
-                    "active at a time; a new start cancels the previous task. "
-                    "Connections reconnect with exponential backoff and are "
-                    "stopped cleanly when the gateway shuts down."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "action": {
-                            "type": "string",
-                            "enum": ["start", "stop", "status"],
-                            "default": "start",
-                            "description": "Lifecycle control. Default is 'start'.",
-                        },
-                        "url": {
-                            "type": "string",
-                            "description": (
-                                "WebSocket URL (ws:// or wss://) to subscribe to. "
-                                "Required when action=start."
-                            ),
-                        },
-                        "source_filter": {
-                            "type": "string",
-                            "description": (
-                                "Optional: ignore frames whose top-level 'source' "
-                                "field does not equal this string."
-                            ),
-                        },
-                        "frame_filter": {
-                            "type": "string",
-                            "description": (
-                                "Optional: ignore frames whose top-level 'frame' "
-                                "field does not equal this string "
-                                "(e.g. 'calibrated')."
-                            ),
-                        },
-                        "flip_yaw": {
-                            "type": "integer",
-                            "enum": [-1, 1],
-                            "default": 1,
-                            "description": (
-                                "Multiplier applied to sensor yaw before clamping. "
-                                "Use -1 if the upstream IMU yaw convention is "
-                                "reversed."
-                            ),
-                        },
-                        "flip_pitch": {
-                            "type": "integer",
-                            "enum": [-1, 1],
-                            "default": 1,
-                        },
-                        "pitch_center_deg": {
-                            "type": "integer",
-                            "default": 45,
-                            "minimum": 5,
-                            "maximum": 85,
-                            "description": (
-                                "Servo pitch (deg) treated as the sensor-pitch=0 "
-                                "anchor. Defaults to the head's neutral pose."
-                            ),
-                        },
-                        "smoothing_window": {
-                            "type": "integer",
-                            "default": 5,
-                            "minimum": 1,
-                            "maximum": 20,
-                            "description": (
-                                "Moving-average window size for incoming sensor "
-                                "frames. 1 = passthrough (disable gateway-side "
-                                "smoothing). Default 5."
-                            ),
-                        },
-                        "downsample_hz": {
-                            "type": "number",
-                            "default": 20,
-                            "exclusiveMinimum": 0,
-                            "maximum": 20,
-                            "description": (
-                                "Cap servo command rate. Recent frames are "
-                                "smoothed; commands are issued at most this "
-                                "frequently. Capped at 20 to match the "
-                                "SCS0009 servo's observed sustained WritePos "
-                                "rate; higher continuous rates can trigger "
-                                "UART hang."
-                            ),
-                        },
-                        "max_step_deg": {
-                            "type": "number",
-                            "default": 12,
-                            "exclusiveMinimum": 0,
-                            "maximum": 30,
-                            "description": (
-                                "Per-tick angular delta limit. With "
-                                "downsample_hz=20 and max_step_deg=12 the "
-                                "effective angular velocity is bounded by "
-                                "240 dps."
-                            ),
-                        },
-                        "speed_dps": {
-                            "type": "integer",
-                            "default": 240,
-                            "minimum": 1,
-                            "maximum": 240,
-                            "description": (
-                                "speed_dps forwarded to set_head_angles per "
-                                "command. Capped at the SCS0009 datasheet "
-                                "working speed (240)."
-                            ),
-                        },
-                    },
-                },
-            ),
-            Tool(
-                name="stackchan_follow_led_stream",
-                description=(
-                    "Subscribes to an arbitrary upstream WebSocket LED-frame "
-                    "stream using action=start, stop, or status, then forwards "
-                    "validated color frames to either the 12-LED base ring or "
-                    "a Port B or Port C WS2812 strip. Frames contain ts, kind, "
-                    "and colors; "
-                    "kind='continuous' is capped by max_fps while kind='event' "
-                    "bypasses the rate gate for beat flashes. Only one LED "
-                    "subscription is active at a time; a new start cancels the "
-                    "previous task. Connections reconnect with exponential "
-                    "backoff and are stopped cleanly when the gateway shuts down."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "action": {
-                            "type": "string",
-                            "enum": ["start", "stop", "status"],
-                            "default": "start",
-                            "description": "Lifecycle control. Default is 'start'.",
-                        },
-                        "url": {
-                            "type": "string",
-                            "description": (
-                                "WebSocket URL (ws:// or wss://) to subscribe to. "
-                                "Required when action=start."
-                            ),
-                        },
-                        "target": {
-                            "type": "string",
-                            "enum": ["base_ring", "port_b", "port_c"],
-                            "description": (
-                                "LED target. base_ring uses the built-in 12 LEDs; "
-                                "port_b uses a WS2812 strip on Port B; port_c "
-                                "uses a WS2812 strip on Port C."
-                            ),
-                        },
-                        "led_count": {
-                            "type": "integer",
-                            "minimum": 1,
-                            "maximum": 256,
-                            "description": (
-                                "Required for target=port_b or target=port_c. "
-                                "For base_ring, omit or pass 12."
-                            ),
-                        },
-                        "color_order": {
-                            "type": "string",
-                            "enum": ["grb", "rgb"],
-                            "default": "grb",
-                            "description": (
-                                "WS2812 strip color order for target=port_b or "
-                                "target=port_c. Use rgb for RGB-wired LEDs; the "
-                                "gateway swaps R/G before forwarding to the "
-                                "firmware. base_ring only supports grb."
-                            ),
-                        },
-                        "max_fps": {
-                            "type": "number",
-                            "default": 30,
-                            "exclusiveMinimum": 0,
-                            "maximum": 30,
-                            "description": (
-                                "Maximum rate for kind='continuous' frames. "
-                                "kind='event' frames bypass this gate. "
-                                "Practical guidance from on-device measurement: "
-                                "wire round-trip is ~40-50 ms per frame on a "
-                                "typical home WLAN, so ~20 fps is the effective "
-                                "ceiling — 20 is the recommended value for live "
-                                "use. Excess continuous frames are dropped; "
-                                "event frames are never dropped."
-                            ),
-                        },
-                        "source_filter": {
-                            "type": "string",
-                            "description": (
-                                "Optional: ignore frames whose top-level 'source' "
-                                "field does not equal this string."
-                            ),
-                        },
-                        "frame_filter": {
-                            "type": "string",
-                            "description": (
-                                "Optional: ignore frames whose top-level 'frame' "
-                                "field does not equal this string."
-                            ),
-                        },
-                        "reconnect_initial_backoff_s": {
-                            "type": "number",
-                            "default": 1.5,
-                            "exclusiveMinimum": 0,
-                            "description": "Initial reconnect backoff in seconds.",
-                        },
-                        "reconnect_max_backoff_s": {
-                            "type": "number",
-                            "default": 30,
-                            "exclusiveMinimum": 0,
-                            "description": "Maximum reconnect backoff in seconds.",
-                        },
-                    },
-                },
-            ),
-            Tool(
                 name="get_head_angles",
                 description="Get the robot's current head angles: yaw and pitch in degrees.",
                 inputSchema={
                     "type": "object",
                     "properties": {},
-                },
-            ),
-            Tool(
-                name="get_touch_sensor_enabled",
-                description=(
-                    "Read the device's NVS-backed head-touch sensor enable "
-                    "flag. When disabled, the firmware stops both the local "
-                    "motion response and the MCP stackchan/event emission; "
-                    "the setting persists across reboot."
-                ),
-                inputSchema={"type": "object", "properties": {}},
-            ),
-            Tool(
-                name="set_touch_sensor_enabled",
-                description=(
-                    "Enable or disable the device's head-touch sensor at "
-                    "runtime. The NVS-backed setting persists across reboot. "
-                    "Disabling stops both the firmware local motion response "
-                    "and the MCP stackchan/event emission."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "enabled": {
-                            "type": "boolean",
-                            "description": (
-                                "True to enable tap/stroke detection; false "
-                                "to disable local reactions and event emission."
-                            ),
-                        },
-                    },
-                    "required": ["enabled"],
                 },
             ),
             Tool(
@@ -1769,77 +1486,6 @@ def create_server(notify_config: NotifyConfig | None = None) -> StackChanServer:
                 },
             ),
             Tool(
-                name="set_servo_torque",
-                description=(
-                    "Enable or disable SCS0009 servo torque on the yaw / "
-                    "pitch axes independently. Disabling torque stops motor "
-                    "current on that axis; the head holds via static "
-                    "friction (no motion is commanded). On disable, the "
-                    "firmware also cancels any in-flight MotionDriver "
-                    "interpolation and marks the axis position unknown so "
-                    "a subsequent same-target set_head_angles is re-"
-                    "dispatched rather than no-op-optimized. Re-enabling "
-                    "torque does NOT trigger a move; the next "
-                    "set_head_angles or wobble call will. Diagnostic / "
-                    "power-management primitive used to observe physical "
-                    "head behavior under torque-off (Issue #163; auto "
-                    "release on idle is Issue #152 Phase 4)."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "yaw_enabled": {
-                            "type": "boolean",
-                            "description": (
-                                "True to enable yaw axis torque, false to "
-                                "disable."
-                            ),
-                        },
-                        "pitch_enabled": {
-                            "type": "boolean",
-                            "description": (
-                                "True to enable pitch axis torque, false "
-                                "to disable."
-                            ),
-                        },
-                    },
-                    "required": ["yaw_enabled", "pitch_enabled"],
-                },
-            ),
-            Tool(
-                name="set_auto_torque_release",
-                description=(
-                    "Enable or disable firmware-side automatic SCS0009 "
-                    "torque release after motion idle timeout. timeout_ms "
-                    "is clamped by the firmware to 500..600000 ms. "
-                    "Disabling this setting does not re-enable torque if "
-                    "it is already released; the next set_head_angles, "
-                    "wobble, or explicit set_servo_torque(true, true) call "
-                    "re-engages torque."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "enabled": {
-                            "type": "boolean",
-                            "description": (
-                                "True to enable idle auto-release, false "
-                                "to disable it."
-                            ),
-                        },
-                        "timeout_ms": {
-                            "type": "integer",
-                            "description": (
-                                "Idle timeout in milliseconds. Values "
-                                "outside 500..600000 are clamped by the "
-                                "firmware handler."
-                            ),
-                        },
-                    },
-                    "required": ["enabled", "timeout_ms"],
-                },
-            ),
-            Tool(
                 name="get_touch_state",
                 description=(
                     "Read the head-touch (Si12T) sensor state and the most recent "
@@ -1849,28 +1495,6 @@ def create_server(notify_config: NotifyConfig | None = None) -> StackChanServer:
                 inputSchema={
                     "type": "object",
                     "properties": {},
-                },
-            ),
-            Tool(
-                name="set_led",
-                description=(
-                    "Set a single RGB LED on the StackChan base. There are 12 LEDs "
-                    "arranged in two rows of 6 (index 0..11). Updates immediately."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "index": {
-                            "type": "integer",
-                            "description": "LED index (0..11)",
-                            "minimum": 0,
-                            "maximum": 11,
-                        },
-                        "r": {"type": "integer", "description": "Red 0..255", "minimum": 0, "maximum": 255},
-                        "g": {"type": "integer", "description": "Green 0..255", "minimum": 0, "maximum": 255},
-                        "b": {"type": "integer", "description": "Blue 0..255", "minimum": 0, "maximum": 255},
-                    },
-                    "required": ["index", "r", "g", "b"],
                 },
             ),
             Tool(
@@ -1884,34 +1508,6 @@ def create_server(notify_config: NotifyConfig | None = None) -> StackChanServer:
                         "b": {"type": "integer", "description": "Blue 0..255", "minimum": 0, "maximum": 255},
                     },
                     "required": ["r", "g", "b"],
-                },
-            ),
-            Tool(
-                name="set_leds",
-                description=(
-                    "Set multiple RGB LEDs in one shot. 'colors' is an array of "
-                    "[r,g,b] triples starting at index 0 (e.g. [[255,0,0],[0,255,0]]). "
-                    "Up to 12 entries; extras are ignored, missing entries keep their "
-                    "previous color. Use this for animations / patterns to avoid 12x "
-                    "I2C round-trips."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "colors": {
-                            "type": "array",
-                            "description": "Array of [r,g,b] triples, each 0..255",
-                            "items": {
-                                "type": "array",
-                                "items": {"type": "integer", "minimum": 0, "maximum": 255},
-                                "minItems": 3,
-                                "maxItems": 3,
-                            },
-                            "minItems": 1,
-                            "maxItems": 12,
-                        },
-                    },
-                    "required": ["colors"],
                 },
             ),
             Tool(
@@ -2175,90 +1771,6 @@ def create_server(notify_config: NotifyConfig | None = None) -> StackChanServer:
                         "motion_enabled": {"type": "boolean"},
                         "led_enabled": {"type": "boolean"},
                     },
-                },
-            ),
-            Tool(
-                name="beat_meta_snapshot",
-                description=(
-                    "Return the latest beat mode snapshot: active state, BPM, "
-                    "confidence, last beat/audio monotonic timestamps, capture "
-                    "health, rolling-buffer duration, counters, current "
-                    "motion/LED parameters, and the active sensitivity with "
-                    "its effective min_onset_rms floor. This is a polling "
-                    "snapshot; beat mode does not push notifications."
-                ),
-                inputSchema={"type": "object", "properties": {}},
-            ),
-            Tool(
-                name="beat_clip_save",
-	                description=(
-	                    "Save the most recent beat-mode audio window as a WAV file "
-	                    "(16 kHz mono signed 16-bit PCM) and return the absolute "
-	                    "temp-file path plus actual captured duration. Works while "
-	                    "beat mode is active and against the retained buffer after "
-	                    "stop, until a new beat mode starts or the gateway restarts. "
-	                    "The file persists on disk; the caller is responsible for "
-	                    "deleting it when no longer needed."
-	                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "seconds": {
-                            "type": "number",
-                            "default": 10.0,
-                            "exclusiveMinimum": 0,
-                            "description": (
-                                "How many recent seconds to write, capped by "
-                                "the rolling capture window."
-                            ),
-                        },
-                    },
-                },
-            ),
-            Tool(
-                name="load_avatar_set",
-                description=(
-                    "Load a dynamic avatar set onto the connected ESP32 "
-                    "(Phase 4.5 avatar pipeline). The gateway stages the "
-                    "payload on its HTTP server, notifies the device via "
-                    "WebSocket, and the device fetches + SHA256-verifies + "
-                    "loads it into PSRAM. ``archive_path`` must point to a "
-                    "raw RGB565 file on the gateway host: layered mode = "
-                    "14 frames (face 6 + eyes 3 + mouth 5) totalling "
-                    "537,600 bytes; matrix mode = 90 frames (6 × 3 × 5) "
-                    "totalling 3,456,000 bytes. Returns ok / checksum / "
-                    "bytes_transferred / error."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "archive_path": {
-                            "type": "string",
-                            "description": (
-                                "Filesystem path on the gateway host to "
-                                "the raw RGB565 payload."
-                            ),
-                        },
-                        "mode": {
-                            "type": "string",
-                            "enum": ["layered", "matrix"],
-                            "description": (
-                                "'layered' (14 frames, ~525 KB) or "
-                                "'matrix' (90 frames, ~3.3 MB)."
-                            ),
-                        },
-                        "timeout": {
-                            "type": "number",
-                            "description": (
-                                "Max seconds to wait for the device's "
-                                "avatar_set_loaded reply."
-                            ),
-                            "default": 60.0,
-                            "minimum": 5.0,
-                            "maximum": 300.0,
-                        },
-                    },
-                    "required": ["archive_path", "mode"],
                 },
             ),
         ]
